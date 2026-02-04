@@ -4,7 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:perfect_volume_control/perfect_volume_control.dart';
+import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -47,7 +47,7 @@ class NotificationService {
     }
 
     // Listen for volume changes to stop Azan
-    PerfectVolumeControl.stream.listen((volume) {
+    FlutterVolumeController.addListener((volume) {
       cancelAllNotifications();
       debugPrint('Volume changed to $volume. Azan stopped.');
     });

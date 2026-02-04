@@ -7,11 +7,14 @@
 #include "generated_plugin_registrant.h"
 
 #include <flutter_timezone/flutter_timezone_plugin_c_api.h>
+#include <flutter_volume_controller/flutter_volume_controller_plugin_c_api.h>
 #include <geolocator_windows/geolocator_windows.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   FlutterTimezonePluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterTimezonePluginCApi"));
+  FlutterVolumeControllerPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FlutterVolumeControllerPluginCApi"));
   GeolocatorWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("GeolocatorWindows"));
 }
