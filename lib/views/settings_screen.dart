@@ -1,5 +1,8 @@
+import 'package:blessing/constands/colors.dart';
+import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/notification_service.dart';
 import 'package:blessing/services/prayer_time_service.dart';
+import 'package:blessing/views/theme_settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,40 +16,24 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Prayer Notification Toggles
-  bool _fajrNotif = true;
-  bool _dhuhrNotif = true;
-  bool _asrNotif = true;
-  bool _maghribNotif = true;
-  bool _ishaNotif = true;
-  bool _sunriseNotif = false;
+  final Color primaryGreen = const Color(0xFF00FF66);
+  final AppColors colors = AppColors();
 
-  // Calculation Settings
-  String _calculationMethod = 'Muslim World League (MWL)';
-  String _madhab = 'Standard (Shafi, Maliki, Hanbali)';
-  String _highLatitude = 'Middle of the Night';
-  String _adhanSound = 'Makkah Al-Mukarramah';
-
-  // Manual Prayer Offsets (in minutes)
-  int _fajrOffset = 0;
-  int _dhuhrOffset = 0;
-  int _asrOffset = 0;
-  int _maghribOffset = 0;
-  int _ishaOffset = 0;
-
-  // General & Location
-  bool _autoDetectLocation = true;
-  String _currentLocationName = 'Locating...';
-  bool _isLocating = false;
+  // Settings State
+  bool _autoLocation = true;
+  String _currentCity = "Kozhikode, India";
+  String _calcMethod = "Muslim World League";
+  String _asrMadhab = "Standard (Shafi, Maliki, Hanbali)";
+  String _fontSize = "100%";
+  bool _adhanNotifications = true;
+  String _quranReciter = "Mishary Rashid Alafasy";
 
   final List<String> _calcMethods = [
-    'Muslim World League (MWL)',
+    'Muslim World League',
     'ISNA (North America)',
     'Umm al-Qura (Makkah)',
     'Egyptian General Authority',
     'University of Islamic Sciences, Karachi',
-    'Gulf Region Authority',
-    'Moonsighting Committee Worldwide',
   ];
 
   final List<String> _madhabOptions = [
@@ -54,66 +41,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Hanafi (Later Asr)',
   ];
 
-  final List<String> _highLatitudeOptions = [
-    'Middle of the Night',
-    'One Seventh',
-    'Angle Based',
+  final List<String> _fontSizes = [
+    '80%',
+    '90%',
+    '100%',
+    '110%',
+    '120%',
   ];
 
-  final List<String> _adhanSounds = [
-    'Makkah Al-Mukarramah',
-    'Al-Madinah Al-Munawwarah',
-    'Al-Aqsa Mosque',
-    'Mishary Rashid Al-Afasy',
-    'Soft Beep / Chime',
+  final List<String> _reciters = [
+    'Mishary Rashid Alafasy',
+    'Abdul Basit Abdul Samad',
+    'Saad Al-Ghamdi',
+    'Mahmoud Khalil Al-Hussary',
   ];
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
-    _fetchCurrentLocation();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _fajrNotif = prefs.getBool('notif_fajr') ?? true;
-      _dhuhrNotif = prefs.getBool('notif_dhuhr') ?? true;
-      _asrNotif = prefs.getBool('notif_asr') ?? true;
-      _maghribNotif = prefs.getBool('notif_maghrib') ?? true;
-      _ishaNotif = prefs.getBool('notif_isha') ?? true;
-      _sunriseNotif = prefs.getBool('notif_sunrise') ?? false;
-
-      _calculationMethod = prefs.getString('calc_method') ?? _calcMethods[0];
-      _madhab = prefs.getString('madhab') ?? _madhabOptions[0];
-      _highLatitude = prefs.getString('high_lat') ?? _highLatitudeOptions[0];
-      _adhanSound = prefs.getString('adhan_sound') ?? _adhanSounds[0];
-
-      _fajrOffset = prefs.getInt('offset_fajr') ?? 0;
-      _dhuhrOffset = prefs.getInt('offset_dhuhr') ?? 0;
-      _asrOffset = prefs.getInt('offset_asr') ?? 0;
-      _maghribOffset = prefs.getInt('offset_maghrib') ?? 0;
-      _ishaOffset = prefs.getInt('offset_isha') ?? 0;
-
-      _autoDetectLocation = prefs.getBool('auto_location') ?? true;
+      _autoLocation = prefs.getBool('auto_location') ?? true;
+      _currentCity = prefs.getString('user_city') ?? "Kozhikode, India";
+      _calcMethod = prefs.getString('calc_method') ?? _calcMethods[0];
+      _asrMadhab = prefs.getString('madhab') ?? _madhabOptions[0];
+      _fontSize = prefs.getString('font_size') ?? "100%";
+      _adhanNotifications = prefs.getBool('adhan_notifs') ?? true;
+      _quranReciter = prefs.getString('quran_reciter') ?? _reciters[0];
     });
   }
 
   Future<void> _saveBool(String key, bool val) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, val);
-
-    if (key.startsWith('notif_')) {
-      try {
-        final pos = await Geolocator.getLastKnownPosition();
-        if (pos != null) {
-          final pt = await PrayerTimeService().getPrayerTimes(pos.latitude, pos.longitude);
-          await NotificationService().syncPrayerNotifications(pt);
-        }
-      } catch (_) {}
-    }
   }
 
   Future<void> _saveString(String key, String val) async {
@@ -121,58 +86,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setString(key, val);
   }
 
-  Future<void> _saveInt(String key, int val) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(key, val);
-  }
-
-  Future<void> _fetchCurrentLocation() async {
-    if (!mounted) return;
-    setState(() => _isLocating = true);
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 6),
-          ),
-        );
-        if (!mounted) return;
-        setState(() {
-          _currentLocationName = '${pos.latitude.toStringAsFixed(3)}° N, ${pos.longitude.toStringAsFixed(3)}° E';
-          _isLocating = false;
-        });
-      } else {
-        if (!mounted) return;
-        setState(() {
-          _currentLocationName = 'Location Permission Denied';
-          _isLocating = false;
-        });
-      }
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _currentLocationName = 'Default Location Set (Makkah)';
-        _isLocating = false;
-      });
-    }
-  }
-
-  void _showSelectionBottomSheet({
+  void _showSelectionModal({
     required String title,
     required List<String> options,
     required String selectedValue,
     required ValueChanged<String> onSelected,
   }) {
-    final primaryColor = Theme.of(context).primaryColor;
-
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: const Color(0xFF0E1420),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -203,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
@@ -212,37 +134,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       final item = options[index];
                       final isSelected = item == selectedValue;
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? primaryColor.withValues(alpha: 0.15)
-                              : const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected ? primaryColor : Colors.white10,
+                      return ListTile(
+                        onTap: () {
+                          onSelected(item);
+                          Navigator.pop(ctx);
+                        },
+                        title: Text(
+                          item,
+                          style: GoogleFonts.outfit(
+                            color: isSelected ? primaryGreen : Colors.white70,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                           ),
                         ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: ListTile(
-                            onTap: () {
-                              onSelected(item);
-                              Navigator.pop(ctx);
-                            },
-                            title: Text(
-                              item,
-                              style: GoogleFonts.outfit(
-                                color: isSelected ? primaryColor : Colors.white,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                            trailing: isSelected
-                                ? Icon(Icons.check_circle_rounded, color: primaryColor, size: 20)
-                                : null,
-                          ),
-                        ),
+                        trailing: isSelected
+                            ? Icon(Icons.check_circle_rounded, color: primaryGreen)
+                            : null,
                       );
                     },
                   ),
@@ -257,394 +163,396 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
-
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF090D16),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+        leading: Center(
+          child: CustomCircleIconButton(
+            icon: Icons.keyboard_arrow_left_rounded,
+            onTap: () => Navigator.pop(context),
+          ),
         ),
+        centerTitle: true,
         title: Text(
-          'Settings & Calculation',
+          'Settings',
           style: GoogleFonts.outfit(
-            color: Colors.white,
             fontWeight: FontWeight.bold,
+            color: Colors.white,
             fontSize: 20,
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Section 1: Prayer Notifications & Azan Alerts
-            _buildSectionHeader('AZAN ALERTS & NOTIFICATIONS', Icons.notifications_active_rounded, primaryColor),
-            const SizedBox(height: 12),
-            _buildCard(
-              children: [
-                _buildSwitchTile('Fajr Prayer Azan', _fajrNotif, (val) {
-                  setState(() => _fajrNotif = val);
-                  _saveBool('notif_fajr', val);
-                }),
-                _buildDivider(),
-                _buildSwitchTile('Dhuhr Prayer Azan', _dhuhrNotif, (val) {
-                  setState(() => _dhuhrNotif = val);
-                  _saveBool('notif_dhuhr', val);
-                }),
-                _buildDivider(),
-                _buildSwitchTile('Asr Prayer Azan', _asrNotif, (val) {
-                  setState(() => _asrNotif = val);
-                  _saveBool('notif_asr', val);
-                }),
-                _buildDivider(),
-                _buildSwitchTile('Maghrib Prayer Azan', _maghribNotif, (val) {
-                  setState(() => _maghribNotif = val);
-                  _saveBool('notif_maghrib', val);
-                }),
-                _buildDivider(),
-                _buildSwitchTile('Isha Prayer Azan', _ishaNotif, (val) {
-                  setState(() => _ishaNotif = val);
-                  _saveBool('notif_isha', val);
-                }),
-                _buildDivider(),
-                _buildSwitchTile('Sunrise Notification', _sunriseNotif, (val) {
-                  setState(() => _sunriseNotif = val);
-                  _saveBool('notif_sunrise', val);
-                }),
-              ],
-            ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 12),
+              // BRAND BANNER
+              Text(
+                "PrayerToday",
+                style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                "Nurture your spiritual growth",
+                style: GoogleFonts.outfit(
+                  color: primaryGreen,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 28),
 
-            const SizedBox(height: 24),
+              // ACCOUNT & LOCATION
+              _buildCategoryHeader("ACCOUNT & LOCATION"),
+              _buildGroupedCard([
+                _buildTile(
+                  icon: Icons.person_rounded,
+                  title: "Profile Details",
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+                  onTap: () {},
+                ),
+                _buildTile(
+                  icon: Icons.location_on_rounded,
+                  title: "Automatic Location",
+                  trailing: Switch(
+                    value: _autoLocation,
+                    onChanged: (val) {
+                      setState(() => _autoLocation = val);
+                      _saveBool('auto_location', val);
+                    },
+                    activeThumbColor: primaryGreen,
+                    activeTrackColor: primaryGreen.withValues(alpha: 0.3),
+                  ),
+                ),
+                _buildTile(
+                  icon: Icons.map_rounded,
+                  title: "Manual City Selection",
+                  subtitle: _currentCity,
+                  trailing: const Icon(Icons.edit_outlined, color: Colors.white54, size: 18),
+                  onTap: () {},
+                  isLast: true,
+                ),
+              ]),
 
-            // Section 2: Calculation Authority & Jurisprudence
-            _buildSectionHeader('PRAYER CALCULATION METHODS', Icons.tune_rounded, primaryColor),
-            const SizedBox(height: 12),
-            _buildCard(
-              children: [
-                _buildAlignedSelectionTile(
-                  label: 'Calculation Authority',
-                  selectedValue: _calculationMethod,
+              const SizedBox(height: 24),
+
+              // PRAYER CALCULATION
+              _buildCategoryHeader("PRAYER CALCULATION"),
+              _buildGroupedCard([
+                _buildTile(
+                  icon: Icons.calculate_rounded,
+                  title: "Calculation Method",
+                  subtitle: _calcMethod,
+                  trailing: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white54),
                   onTap: () {
-                    _showSelectionBottomSheet(
-                      title: 'Select Calculation Authority',
+                    _showSelectionModal(
+                      title: "Calculation Method",
                       options: _calcMethods,
-                      selectedValue: _calculationMethod,
+                      selectedValue: _calcMethod,
                       onSelected: (val) {
-                        setState(() => _calculationMethod = val);
+                        setState(() => _calcMethod = val);
                         _saveString('calc_method', val);
                       },
                     );
                   },
                 ),
-                _buildDivider(),
-                _buildAlignedSelectionTile(
-                  label: 'Asr Juristic Method (Madhab)',
-                  selectedValue: _madhab,
+                _buildTile(
+                  icon: Icons.alt_route_rounded,
+                  title: "Asr Madhab",
+                  subtitle: _asrMadhab,
+                  trailing: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white54),
                   onTap: () {
-                    _showSelectionBottomSheet(
-                      title: 'Select Asr Juristic Method',
+                    _showSelectionModal(
+                      title: "Asr Madhab",
                       options: _madhabOptions,
-                      selectedValue: _madhab,
+                      selectedValue: _asrMadhab,
                       onSelected: (val) {
-                        setState(() => _madhab = val);
+                        setState(() => _asrMadhab = val);
                         _saveString('madhab', val);
                       },
                     );
                   },
+                  isLast: true,
                 ),
-                _buildDivider(),
-                _buildAlignedSelectionTile(
-                  label: 'High Latitude Rule',
-                  selectedValue: _highLatitude,
+              ]),
+
+              const SizedBox(height: 24),
+
+              // DISPLAY & THEME
+              _buildCategoryHeader("DISPLAY & THEME"),
+              _buildGroupedCard([
+                _buildTile(
+                  icon: Icons.palette_rounded,
+                  title: "App Theme",
+                  subtitle: "Customize colors & presets",
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
                   onTap: () {
-                    _showSelectionBottomSheet(
-                      title: 'Select High Latitude Rule',
-                      options: _highLatitudeOptions,
-                      selectedValue: _highLatitude,
-                      onSelected: (val) {
-                        setState(() => _highLatitude = val);
-                        _saveString('high_lat', val);
-                      },
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const ThemeSettingsScreen()),
                     );
                   },
                 ),
-                _buildDivider(),
-                _buildAlignedSelectionTile(
-                  label: 'Azan Reciter & Sound',
-                  selectedValue: _adhanSound,
+                _buildTile(
+                  icon: Icons.text_fields_rounded,
+                  title: "Global Font Size",
+                  subtitle: "Adjust text size for Duas & Quran: $_fontSize",
+                  trailing: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white54),
                   onTap: () {
-                    _showSelectionBottomSheet(
-                      title: 'Select Azan Sound',
-                      options: _adhanSounds,
-                      selectedValue: _adhanSound,
+                    _showSelectionModal(
+                      title: "Global Font Size",
+                      options: _fontSizes,
+                      selectedValue: _fontSize,
                       onSelected: (val) {
-                        setState(() => _adhanSound = val);
-                        _saveString('adhan_sound', val);
+                        setState(() => _fontSize = val);
+                        _saveString('font_size', val);
                       },
                     );
                   },
+                  isLast: true,
                 ),
-              ],
-            ),
+              ]),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // Section 3: Manual Time Offsets (Fine-tuning)
-            _buildSectionHeader('PRAYER TIME OFFSETS (MINUTES)', Icons.more_time_rounded, primaryColor),
-            const SizedBox(height: 12),
-            _buildCard(
-              children: [
-                _buildOffsetStepper('Fajr Offset', _fajrOffset, (newVal) {
-                  setState(() => _fajrOffset = newVal);
-                  _saveInt('offset_fajr', newVal);
-                }),
-                _buildDivider(),
-                _buildOffsetStepper('Dhuhr Offset', _dhuhrOffset, (newVal) {
-                  setState(() => _dhuhrOffset = newVal);
-                  _saveInt('offset_dhuhr', newVal);
-                }),
-                _buildDivider(),
-                _buildOffsetStepper('Asr Offset', _asrOffset, (newVal) {
-                  setState(() => _asrOffset = newVal);
-                  _saveInt('offset_asr', newVal);
-                }),
-                _buildDivider(),
-                _buildOffsetStepper('Maghrib Offset', _maghribOffset, (newVal) {
-                  setState(() => _maghribOffset = newVal);
-                  _saveInt('offset_maghrib', newVal);
-                }),
-                _buildDivider(),
-                _buildOffsetStepper('Isha Offset', _ishaOffset, (newVal) {
-                  setState(() => _ishaOffset = newVal);
-                  _saveInt('offset_isha', newVal);
-                }),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Section 4: Geolocation & Location Services
-            _buildSectionHeader('LOCATION & GPS SERVICES', Icons.my_location_rounded, primaryColor),
-            const SizedBox(height: 12),
-            _buildCard(
-              children: [
-                _buildSwitchTile('Auto-Detect GPS Location', _autoDetectLocation, (val) {
-                  setState(() => _autoDetectLocation = val);
-                  _saveBool('auto_location', val);
-                }),
-                _buildDivider(),
-                ListTile(
-                  title: Text(
-                    'Current GPS Coordinates',
-                    style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+              // AUDIO & ADHAN
+              _buildCategoryHeader("AUDIO & ADHAN"),
+              _buildGroupedCard([
+                _buildTile(
+                  icon: Icons.notifications_rounded,
+                  title: "Adhan Notifications",
+                  trailing: Switch(
+                    value: _adhanNotifications,
+                    onChanged: (val) {
+                      setState(() => _adhanNotifications = val);
+                      _saveBool('adhan_notifs', val);
+                    },
+                    activeThumbColor: primaryGreen,
+                    activeTrackColor: primaryGreen.withValues(alpha: 0.3),
                   ),
-                  subtitle: Text(
-                    _currentLocationName,
-                    style: GoogleFonts.outfit(color: primaryColor, fontSize: 13),
-                  ),
-                  trailing: _isLocating
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
-                        )
-                      : IconButton(
-                          icon: Icon(Icons.refresh_rounded, color: primaryColor),
-                          onPressed: _fetchCurrentLocation,
+                ),
+                _buildTile(
+                  icon: Icons.record_voice_over_rounded,
+                  title: "Quran Reciter",
+                  subtitle: _quranReciter,
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+                  onTap: () {
+                    _showSelectionModal(
+                      title: "Quran Reciter",
+                      options: _reciters,
+                      selectedValue: _quranReciter,
+                      onSelected: (val) {
+                        setState(() => _quranReciter = val);
+                        _saveString('quran_reciter', val);
+                      },
+                    );
+                  },
+                  isLast: true,
+                ),
+              ]),
+
+              const SizedBox(height: 24),
+
+              // SYSTEM & SYNC
+              _buildCategoryHeader("SYSTEM & SYNC"),
+              _buildGroupedCard([
+                _buildTile(
+                  icon: Icons.sync_rounded,
+                  title: "Reload All Data",
+                  subtitle: "Sync prayer times and settings",
+                  trailing: const Icon(Icons.refresh_rounded, color: Colors.white54),
+                  onTap: () async {
+                    final pos = await Geolocator.getLastKnownPosition();
+                    if (pos != null) {
+                      final pt = await PrayerTimeService().getPrayerTimes(pos.latitude, pos.longitude);
+                      await NotificationService().syncPrayerNotifications(pt);
+                    }
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text("Data reloaded & synced"),
+                        backgroundColor: const Color(0xFF131924),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                      ),
+                    );
+                  },
                 ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Section 5: App Info
-            _buildSectionHeader('ABOUT BLESSING APP', Icons.info_outline_rounded, primaryColor),
-            const SizedBox(height: 12),
-            _buildCard(
-              children: [
-                ListTile(
-                  title: Text('App Version', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15)),
-                  subtitle: Text('v2.5.0 Premium Emerald Edition', style: GoogleFonts.outfit(color: Colors.white38, fontSize: 12)),
-                  trailing: Icon(Icons.verified_rounded, color: primaryColor, size: 20),
+                _buildTile(
+                  icon: Icons.folder_outlined,
+                  title: "Offline Data",
+                  subtitle: "Manage downloaded content",
+                  trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+                  onTap: () {},
+                  isLast: true,
                 ),
-                _buildDivider(),
-                ListTile(
-                  title: Text('Developer & Credits', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15)),
-                  subtitle: Text('Blessing Islamic Suite • Built with Flutter', style: GoogleFonts.outfit(color: Colors.white38, fontSize: 12)),
-                ),
-              ],
-            ),
+              ]),
 
-            const SizedBox(height: 40),
-          ],
+              const SizedBox(height: 32),
+
+              // LOG IN / REGISTER BUTTON MATCHING SCREENSHOT
+              Center(
+                child: SizedBox(
+                  width: 240,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text("Authentication coming soon"),
+                          backgroundColor: const Color(0xFF131924),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: primaryGreen,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.login_rounded, color: Colors.black, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Log In / Register",
+                          style: GoogleFonts.outfit(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // FOOTER APP VERSION
+              Center(
+                child: Column(
+                  children: [
+                    Text(
+                      "PrayerToday App v2.4.0 (120)",
+                      style: GoogleFonts.outfit(
+                        color: Colors.white38,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Peace be upon you",
+                      style: GoogleFonts.outfit(
+                        color: Colors.white38,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 40),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: GoogleFonts.outfit(
-            color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
-          ),
+  Widget _buildCategoryHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        title,
+        style: GoogleFonts.outfit(
+          color: Colors.white54,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.0,
         ),
+      ),
+    );
+  }
+
+  Widget _buildGroupedCard(List<Widget> tiles) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(children: tiles),
+    );
+  }
+
+  Widget _buildTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required Widget trailing,
+    VoidCallback? onTap,
+    bool isLast = false,
+  }) {
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+          onTap: onTap,
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: primaryGreen.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: primaryGreen, size: 20),
+          ),
+          title: Text(
+            title,
+            style: GoogleFonts.outfit(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          subtitle: subtitle != null
+              ? Text(
+                  subtitle,
+                  style: GoogleFonts.outfit(
+                    color: Colors.white54,
+                    fontSize: 12,
+                  ),
+                )
+              : null,
+          trailing: trailing,
+        ),
+        if (!isLast)
+          Divider(
+            height: 1,
+            indent: 18,
+            endIndent: 18,
+            color: Colors.white.withValues(alpha: 0.04),
+          ),
       ],
     );
-  }
-
-  Widget _buildCard({required List<Widget> children}) {
-    return Material(
-      color: const Color(0xFF1E293B),
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(children: children),
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile(String title, bool value, ValueChanged<bool> onChanged) {
-    final primaryColor = Theme.of(context).primaryColor;
-    return SwitchListTile(
-      activeThumbColor: primaryColor,
-      title: Text(
-        title,
-        style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
-      ),
-      value: value,
-      onChanged: onChanged,
-    );
-  }
-
-  Widget _buildAlignedSelectionTile({
-    required String label,
-    required String selectedValue,
-    required VoidCallback onTap,
-  }) {
-    final primaryColor = Theme.of(context).primaryColor;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.outfit(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    selectedValue,
-                    style: GoogleFonts.outfit(
-                      color: primaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(Icons.arrow_forward_ios_rounded, color: primaryColor.withValues(alpha: 0.7), size: 14),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOffsetStepper(String title, int currentValue, ValueChanged<int> onChanged) {
-    final primaryColor = Theme.of(context).primaryColor;
-    final displayStr = currentValue > 0 ? "+$currentValue min" : "$currentValue min";
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: GoogleFonts.outfit(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.remove_rounded, color: Colors.white70, size: 18),
-                  onPressed: () => onChanged(currentValue - 1),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(
-                    displayStr,
-                    style: GoogleFonts.outfit(
-                      color: primaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.add_rounded, color: Colors.white70, size: 18),
-                  onPressed: () => onChanged(currentValue + 1),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Divider(height: 1, color: Colors.white.withValues(alpha: 0.05), indent: 16, endIndent: 16);
   }
 }

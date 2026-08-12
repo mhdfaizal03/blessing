@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:adhan/adhan.dart';
 import 'package:blessing/constands/colors.dart';
@@ -7,11 +6,14 @@ import 'package:blessing/services/local_storage_service.dart';
 import 'package:blessing/services/notification_service.dart';
 import 'package:blessing/services/prayer_time_service.dart';
 import 'package:blessing/services/quran_service.dart';
+import 'package:blessing/views/habit_tracker_screen.dart';
 import 'package:blessing/views/prayer_times_screen.dart';
+import 'package:blessing/views/settings_screen.dart';
 import 'package:blessing/views/surah_details_screen.dart';
 import 'package:blessing/views/tasbeeh_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -24,8 +26,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final AppColors colors = AppColors();
-  late final Color cardColor = colors.kCardBg;
-  late final Color accentColor = colors.kAccentNeon;
+  final Color primaryGreen = const Color(0xFF00FF66);
 
   // Services & State
   final PrayerTimeService _prayerService = PrayerTimeService();
@@ -37,18 +38,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, int>? _lastRead;
   Map<String, dynamic>? _lastSurahData;
 
-  String _timeRemaining = "--:--:--";
+  String _timeRemaining = "00:00:00";
   Timer? _timer;
   Position? _currentPosition;
-  String _nextPrayerName = "--";
-  String _nextPrayerTime = "--:--";
-  double _timerProgress = 0.75; // Default/Loading state
-
-  // Iftar State
-  String _iftarTimeRemaining = "--h --m";
-  String _iftarTimeDisplay = "--:-- PM";
-  double _iftarProgress = 0.0;
-  bool _isRamadan = false;
+  String _currentAddress = "Kozhikode, India";
+  String _nextPrayerName = "DHUHR";
+  String _nextPrayerTime = "12:33 PM";
+  double _timerProgress = 0.65;
 
   @override
   void initState() {
@@ -65,20 +61,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _initData() async {
     _loadLastRead();
     try {
-      // 0. Check Ramadan
-      setState(() {
-        _isRamadan = _prayerService.isRamadan();
-      });
-
-      // 1. Check Cache
       final cached = await _storageService.getCachedLocation();
       final reloadNeeded = await _storageService.needsReload();
 
       if (cached != null && !reloadNeeded) {
-        debugPrint("Using cached data: ${cached['address']}");
         if (!mounted) return;
         setState(() {
-          // Create dummy position for existing logic if needed
+          _currentAddress = cached['address'] ?? "Kozhikode, India";
           _currentPosition = Position(
             latitude: cached['lat'],
             longitude: cached['lng'],
@@ -97,8 +86,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
       }
 
-      // 2. Refresh Location if not cached or reload needed
-      debugPrint("Fetching fresh location data...");
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -106,6 +93,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
+        await _refreshPrayerTimes();
+        _startTimer();
         return;
       }
 
@@ -115,7 +104,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         position.longitude,
       );
 
-      // Save to Cache
       await _storageService.saveLocationData(
         lat: position.latitude,
         lng: position.longitude,
@@ -125,12 +113,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       setState(() {
         _currentPosition = position;
+        _currentAddress = address;
       });
 
       await _refreshPrayerTimes();
       _startTimer();
     } catch (e) {
       debugPrint("Error initializing dashboard: $e");
+      await _refreshPrayerTimes();
+      _startTimer();
     }
   }
 
@@ -148,14 +139,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _refreshPrayerTimes() async {
-    if (_currentPosition == null) return;
+    final lat = _currentPosition?.latitude ?? 11.2588;
+    final lng = _currentPosition?.longitude ?? 75.7804;
 
-    final pt = await _prayerService.getPrayerTimes(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-    );
+    final pt = await _prayerService.getPrayerTimes(lat, lng);
 
-    // Sync notification alarms with exact prayer times
     NotificationService().syncPrayerNotifications(pt);
 
     if (mounted) {
@@ -163,7 +151,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _prayerTimes = pt;
         _isLoading = false;
         _updateNextPrayerInfo();
-        _updateIftarInfo();
       });
     }
   }
@@ -172,15 +159,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_prayerTimes == null) return;
 
-      // Check if we need to refresh prayer times (e.g. next day)
-      // For simplicity, we just update countdowns here
-      // Real-app might check date change.
+      final prevRemaining = _timeRemaining;
+      _updateNextPrayerInfo();
 
-      if (mounted) {
-        setState(() {
-          _updateNextPrayerInfo();
-          _updateIftarInfo();
-        });
+      if (mounted && _timeRemaining != prevRemaining) {
+        setState(() {});
       }
     });
   }
@@ -193,7 +176,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     var prevPrayer = _prayerTimes!.currentPrayer();
     var prevTime = _prayerTimes!.timeForPrayer(prevPrayer);
 
-    // Handle "After Isha" case -> Next is Tomorrow's Fajr
     if (next == Prayer.none) {
       final tomorrow = DateTime.now().add(const Duration(days: 1));
       final coordinates = Coordinates(
@@ -214,7 +196,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       prevPrayer = Prayer.isha;
       prevTime = _prayerTimes!.isha;
     } else if (prevPrayer == Prayer.none) {
-      // Handle "Early Morning" case (Before Fajr) -> Prev was Yesterday's Isha
       final yesterday = DateTime.now().subtract(const Duration(days: 1));
       final coordinates = Coordinates(
         _currentPosition!.latitude,
@@ -235,25 +216,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (nextTime == null || prevTime == null) return;
 
-    _nextPrayerName = _prayerService.getPrayerName(next);
+    _nextPrayerName = _prayerService.getPrayerName(next).toUpperCase();
     _nextPrayerTime = DateFormat('h:mm a').format(nextTime);
 
     final now = DateTime.now();
     final difference = nextTime.difference(now);
 
     if (difference.isNegative) {
-      // Time passed, trigger refresh to get fresh next prayer
       _refreshPrayerTimes();
       return;
     }
 
-    // Format HH:MM:SS
     final hours = difference.inHours.toString().padLeft(2, '0');
     final minutes = (difference.inMinutes % 60).toString().padLeft(2, '0');
     final seconds = (difference.inSeconds % 60).toString().padLeft(2, '0');
     _timeRemaining = "$hours:$minutes:$seconds";
 
-    // Progress Calculation
     final totalDuration = nextTime.difference(prevTime).inSeconds;
     final elapsed = now.difference(prevTime).inSeconds;
     if (totalDuration > 0) {
@@ -261,247 +239,172 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _updateIftarInfo() {
-    if (!_isRamadan) return; // Skip iftar calculations if not Ramadan
-    if (_prayerTimes == null) return;
-
-    final maghrib = _prayerTimes!.maghrib;
-    _iftarTimeDisplay = "Sunset at ${DateFormat('h:mm a').format(maghrib)}";
-
-    final now = DateTime.now();
-    final diff = maghrib.difference(now);
-
-    if (diff.isNegative) {
-      _iftarTimeRemaining = "Completed";
-      _iftarProgress = 1.0;
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return "Good Morning,";
+    } else if (hour < 17) {
+      return "Good Afternoon,";
     } else {
-      final h = diff.inHours;
-      final m = diff.inMinutes % 60;
-      _iftarTimeRemaining = "${h}h ${m}m";
-
-      // Progress based on day (Sunrise to Maghrib usually for fasting)
-      final sunrise = _prayerTimes!.sunrise;
-      final totalFasting = maghrib.difference(sunrise).inSeconds;
-      final elapsedFasting = now.difference(sunrise).inSeconds;
-
-      if (totalFasting > 0) {
-        _iftarProgress = (elapsedFasting / totalFasting).clamp(0.0, 1.0);
-      } else {
-        _iftarProgress = 0.0;
-      }
+      return "Good Evening,";
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: colors.kPrimaryBg,
+      backgroundColor: const Color(0xFF090D16),
       body: SafeArea(
         child: _isLoading
             ? _buildShimmerLoading()
-            : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    _buildHeader(),
-                    const SizedBox(height: 28),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const PrayerTimesScreen(),
-                          ),
-                        );
-                      },
-                      child: _buildPrayerTimer(),
-                    ),
-                    const SizedBox(height: 28),
-                    _buildActionGrid(),
-                    const SizedBox(height: 20),
-                    _buildContinueReading(),
-                    const SizedBox(height: 20),
-                    _buildDailyDua(),
-                    const SizedBox(height: 100), // Spacing for floating nav bar
-                  ],
+            : RefreshIndicator(
+                color: primaryGreen,
+                backgroundColor: const Color(0xFF131924),
+                onRefresh: () async {
+                  await _initData();
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 12),
+                      _buildHeaderCard(),
+                      const SizedBox(height: 32),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const PrayerTimesScreen(),
+                            ),
+                          );
+                        },
+                        child: _buildPrayerTimerHero(),
+                      ),
+                      const SizedBox(height: 32),
+                      _buildActionGrid(),
+                      const SizedBox(height: 20),
+                      _buildContinueReadingCard(),
+                      const SizedBox(height: 20),
+                      _buildDailyDuaCard(),
+                      const SizedBox(height: 120),
+                    ],
+                  ),
                 ),
               ),
       ),
     );
   }
 
-  Widget _buildShimmerLoading() {
-    return Shimmer.fromColors(
-      baseColor: Colors.white.withValues(alpha: 0.05),
-      highlightColor: Colors.white.withValues(alpha: 0.1),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const CircleAvatar(radius: 22, backgroundColor: Colors.white),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 12,
-                      width: 100,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      height: 18,
-                      width: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-            Center(
-              child: Container(
-                width: 240,
-                height: 240,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 140,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Container(
-                    height: 140,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Container(
-              height: 150,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
+  // --- HEADER CARD MATCHING IMAGE ---
+  Widget _buildHeaderCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(40),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1.2,
         ),
       ),
-    );
-  }
-
-  Widget _buildHeader() {
-    final now = DateTime.now();
-    final formattedDate = DateFormat('E, d MMM').format(now);
-
-    return Row(
-      children: [
-        Stack(
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: colors.kSurface,
-              backgroundImage: const NetworkImage('https://i.pravatar.cc/150?u=ahmed'),
-              onBackgroundImageError: (_, _) {
-                debugPrint("Avatar image failed to load");
+      child: Row(
+        children: [
+          // Avatar G Circle
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: primaryGreen.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+              border: Border.all(color: primaryGreen, width: 2),
+            ),
+            child: Center(
+              child: Text(
+                "G",
+                style: GoogleFonts.outfit(
+                  color: primaryGreen,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _getGreeting(),
+                  style: GoogleFonts.outfit(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  "Guest",
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  _currentAddress,
+                  style: GoogleFonts.outfit(
+                    color: primaryGreen,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: const Icon(
+                Icons.settings_rounded,
+                color: Colors.white70,
+                size: 20,
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsScreen(),
+                  ),
+                );
               },
-              child: const Icon(Icons.person, color: Colors.white70),
             ),
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: colors.kAccentNeon,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: colors.kPrimaryBg, width: 2),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Salam Alaykum,",
-              style: TextStyle(color: colors.kTextGrey, fontSize: 12),
-            ),
-            Text(
-              "Ahmed",
-              style: TextStyle(
-                color: colors.kTextWhite,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: colors.kSurface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: colors.kGlassBorder),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.calendar_today_rounded, color: colors.kAccentNeon, size: 12),
-              const SizedBox(width: 6),
-              Text(
-                formattedDate,
-                style: TextStyle(
-                  color: colors.kTextWhite,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildPrayerTimer() {
+  // --- PRAYER TIMER CIRCLE HERO MATCHING IMAGE ---
+  Widget _buildPrayerTimerHero() {
     return Center(
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Background Glow Ring
+          // Ambient Glow Background
           Container(
             width: 250,
             height: 250,
@@ -509,24 +412,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: colors.kAccentNeon.withValues(alpha: 0.08),
-                  blurRadius: 30,
-                  spreadRadius: 10,
+                  color: primaryGreen.withValues(alpha: 0.12),
+                  blurRadius: 50,
+                  spreadRadius: 20,
                 ),
               ],
             ),
           ),
 
-          // Progress Arc Indicator
+          // Progress Arc Ring
           SizedBox(
             width: 240,
             height: 240,
             child: CircularProgressIndicator(
               value: _timerProgress,
-              strokeWidth: 10,
+              strokeWidth: 8,
               strokeCap: StrokeCap.round,
-              backgroundColor: Colors.white.withValues(alpha: 0.06),
-              color: colors.kAccentNeon,
+              backgroundColor: Colors.white.withValues(alpha: 0.05),
+              color: primaryGreen,
             ),
           ),
 
@@ -534,52 +437,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                "NEXT PRAYER",
-                style: TextStyle(
-                  color: colors.kTextGrey,
-                  fontSize: 11,
+                "TIME TO $_nextPrayerName",
+                style: GoogleFonts.outfit(
+                  color: primaryGreen,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
+                  letterSpacing: 1.5,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 _timeRemaining,
-                style: TextStyle(
-                  color: colors.kTextWhite,
-                  fontSize: 42,
-                  fontWeight: FontWeight.bold,
+                style: GoogleFonts.outfit(
+                  color: Colors.white,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w600,
                   letterSpacing: -1,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
-                  color: colors.kAccentNeon.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
+                  color: primaryGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(30),
                   border: Border.all(
-                    color: colors.kAccentNeon.withValues(alpha: 0.3),
+                    color: primaryGreen.withValues(alpha: 0.25),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.access_time_filled, color: colors.kAccentNeon, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      _nextPrayerName,
-                      style: TextStyle(
-                        color: colors.kAccentNeon,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
+                    Icon(
+                      Icons.access_time_filled,
+                      color: primaryGreen,
+                      size: 15,
                     ),
+                    const SizedBox(width: 8),
                     Text(
-                      "  •  $_nextPrayerTime",
-                      style: TextStyle(
-                        color: colors.kTextWhite.withValues(alpha: 0.8),
+                      "Starts $_nextPrayerTime",
+                      style: GoogleFonts.outfit(
+                        color: primaryGreen,
+                        fontWeight: FontWeight.bold,
                         fontSize: 13,
                       ),
                     ),
@@ -593,13 +496,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // --- ACTION GRID MATCHING IMAGE ---
   Widget _buildActionGrid() {
     return Row(
       children: [
+        // Left Habits Card
         Expanded(
-          child: _isRamadan ? _buildIftarCard() : _buildHabitTrackerCard(),
+          child: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HabitTrackerScreen(),
+                ),
+              );
+            },
+            child: Container(
+              height: 160,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF131924),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: primaryGreen.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.check_circle_outline_rounded,
+                          color: primaryGreen,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "HABITS",
+                        style: GoogleFonts.outfit(
+                          color: Colors.white54,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    "Track your\nSunnah",
+                    style: GoogleFonts.outfit(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Text(
+                        "Keep going!",
+                        style: GoogleFonts.outfit(
+                          color: primaryGreen,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        color: primaryGreen,
+                        size: 14,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-        const SizedBox(width: 15),
+        const SizedBox(width: 14),
+        // Right Digital Tasbih Card
         Expanded(
           child: GestureDetector(
             onTap: () {
@@ -608,10 +592,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 MaterialPageRoute(builder: (context) => const TasbeehScreen()),
               );
             },
-            child: _glassAccentCard(
+            child: Container(
+              height: 160,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF131924),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: primaryGreen.withValues(alpha: 0.3),
+                  width: 1.2,
+                ),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -619,21 +612,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: colors.kPrimaryBg.withValues(alpha: 0.2),
-                          shape: BoxShape.circle,
+                          color: primaryGreen.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.touch_app_rounded, color: Colors.black, size: 20),
+                        child: Icon(
+                          Icons.touch_app_rounded,
+                          color: primaryGreen,
+                          size: 20,
+                        ),
                       ),
-                      const Icon(Icons.arrow_forward_rounded, color: Colors.black, size: 20),
+                      const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white54,
+                        size: 18,
+                      ),
                     ],
                   ),
-                  const Text(
-                    "Start\nTasbih",
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
+                  const Spacer(),
+                  Text(
+                    "Digital\nTasbih",
+                    style: GoogleFonts.outfit(
+                      color: Colors.white,
                       fontSize: 20,
-                      height: 1.1,
+                      fontWeight: FontWeight.bold,
+                      height: 1.15,
                     ),
                   ),
                 ],
@@ -645,311 +647,184 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildIftarCard() {
-    return _glassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.nightlight_round, color: colors.kAccentNeon, size: 16),
-              const SizedBox(width: 6),
-              Text(
-                "IFTAR TIME",
-                style: TextStyle(
-                  color: colors.kTextGrey,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            _iftarTimeRemaining,
-            style: TextStyle(
-              color: colors.kTextWhite,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            _iftarTimeDisplay,
-            style: TextStyle(color: colors.kTextGrey, fontSize: 11),
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: _iftarProgress,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
-              valueColor: AlwaysStoppedAnimation(colors.kAccentNeon),
-              minHeight: 4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHabitTrackerCard() {
-    return _glassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.check_circle_outline_rounded, color: colors.kAccentNeon, size: 16),
-              const SizedBox(width: 6),
-              Text(
-                "DAILY HABITS",
-                style: TextStyle(
-                  color: colors.kTextGrey,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            "Track your\nSunnah",
-            style: TextStyle(
-              color: colors.kTextWhite,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _habitBubble(Icons.menu_book_rounded, true),
-              _habitBubble(Icons.favorite_outline_rounded, false),
-              _habitBubble(Icons.water_drop_outlined, false),
-              _habitBubble(Icons.mosque_outlined, true),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _habitBubble(IconData icon, bool completed) {
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: completed ? colors.kAccentNeon : Colors.white.withValues(alpha: 0.1),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        icon,
-        size: 14,
-        color: completed ? Colors.black : Colors.white54,
-      ),
-    );
-  }
-
-  Widget _glassCard({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: colors.kGlassWhite,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: colors.kGlassBorder),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-
-  Widget _glassAccentCard({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          height: 140,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: colors.emeraldGradient,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-            boxShadow: [
-              BoxShadow(
-                color: colors.kAccentNeon.withValues(alpha: 0.2),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContinueReading() {
+  // --- CONTINUE READING CARD MATCHING IMAGE ---
+  Widget _buildContinueReadingCard() {
     final progressValue = _lastRead != null && _lastSurahData != null
         ? (_lastRead!['ayah']! / _lastSurahData!['ayahs']).clamp(0.0, 1.0)
-        : 0.05;
+        : 0.0;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: colors.kGlassWhite,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: colors.kGlassBorder),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                right: -20,
-                top: 0,
-                bottom: 0,
-                child: Opacity(
-                  opacity: 0.15,
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1544947950-fa07a98d237f',
-                    height: 150,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                  ),
+    final progressPercent = (progressValue * 100).toInt();
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Stack(
+        children: [
+          // Background Calligraphy Image Pattern Overlay
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Opacity(
+                opacity: 0.12,
+                child: Image.network(
+                  'https://images.unsplash.com/photo-1609599006353-e629aaabfeae',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.menu_book_rounded, color: colors.kAccentNeon, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          "Continue Reading",
-                          style: TextStyle(
-                            color: colors.kTextWhite,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: primaryGreen.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        color: primaryGreen,
+                        size: 16,
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(width: 8),
                     Text(
-                      _lastSurahData != null
-                          ? "${_lastSurahData!['name']} • Ayah ${_lastRead!['ayah']}"
-                          : "Surah Al-Fatihah • Ayah 1",
-                      style: TextStyle(color: colors.kTextGrey, fontSize: 13),
-                    ),
-                    const SizedBox(height: 15),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: progressValue,
-                              backgroundColor: Colors.white.withValues(alpha: 0.1),
-                              valueColor: AlwaysStoppedAnimation<Color>(colors.kAccentNeon),
-                              minHeight: 5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          "${(progressValue * 100).toInt()}%",
-                          style: TextStyle(
-                            color: colors.kAccentNeon,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 40,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          if (_lastRead != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => SurahDetailScreen(
-                                  surahNumber: _lastRead!['surah']!,
-                                  initialAyah: _lastRead!['ayah'],
-                                ),
-                              ),
-                            ).then((_) => _loadLastRead());
-                          } else {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const SurahDetailScreen(surahNumber: 1),
-                              ),
-                            ).then((_) => _loadLastRead());
-                          }
-                        },
-                        icon: Icon(Icons.play_arrow_rounded, color: colors.kPrimaryBg, size: 18),
-                        label: Text(
-                          "Resume Reading",
-                          style: TextStyle(
-                            color: colors.kPrimaryBg,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          elevation: 0,
-                          backgroundColor: colors.kAccentNeon,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
+                      "Continue Reading",
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Text(
+                  _lastSurahData != null
+                      ? "${_lastSurahData!['name']} • Ayah ${_lastRead!['ayah']}"
+                      : "Surah Al-Fatihah • Ayah 1",
+                  style: GoogleFonts.outfit(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progressValue,
+                          backgroundColor: Colors.white.withValues(alpha: 0.12),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            primaryGreen,
+                          ),
+                          minHeight: 5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      "$progressPercent%",
+                      style: GoogleFonts.outfit(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      if (_lastRead != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SurahDetailScreen(
+                              surahNumber: _lastRead!['surah']!,
+                              initialAyah: _lastRead!['ayah'],
+                            ),
+                          ),
+                        ).then((_) => _loadLastRead());
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const SurahDetailScreen(surahNumber: 1),
+                          ),
+                        ).then((_) => _loadLastRead());
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: const Color(0xFFE2E8F0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                    ),
+                    child: Text(
+                      "Resume",
+                      style: GoogleFonts.outfit(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildDailyDua() {
-    return _cardDuaWrapper(
+  // --- TODAY'S DUA CARD ---
+  Widget _buildDailyDuaCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: colors.kAccentNeon.withValues(alpha: 0.15),
+                  color: primaryGreen.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   "TODAY'S DUA",
-                  style: TextStyle(
-                    color: colors.kAccentNeon,
+                  style: GoogleFonts.outfit(
+                    color: primaryGreen,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.8,
@@ -960,8 +835,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: const Text("Dua shared"),
-                      backgroundColor: colors.kCardBg,
+                      content: const Text("Dua copied to clipboard"),
+                      backgroundColor: const Color(0xFF131924),
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -970,7 +845,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   );
                 },
-                icon: Icon(Icons.share_outlined, color: colors.kTextGrey, size: 18),
+                icon: const Icon(
+                  Icons.share_outlined,
+                  color: Colors.white54,
+                  size: 18,
+                ),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
@@ -979,8 +858,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 16),
           Text(
             "رَبِّ اشْرَحْ لِي صَدْرِي وَيَسِّرْ لِي أَمْرِي",
-            style: TextStyle(
-              color: colors.kTextWhite,
+            style: GoogleFonts.amiri(
+              color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.bold,
             ),
@@ -989,7 +868,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 10),
           Text(
             "\"My Lord, expand for me my breast [with assurance] and ease for me my task.\"",
-            style: TextStyle(color: colors.kTextGrey, fontSize: 13, height: 1.4),
+            style: GoogleFonts.outfit(
+              color: Colors.white60,
+              fontSize: 13,
+              height: 1.4,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -997,19 +880,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _cardDuaWrapper({required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: colors.kGlassWhite,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: colors.kGlassBorder),
-          ),
-          child: child,
+  Widget _buildShimmerLoading() {
+    return Shimmer.fromColors(
+      baseColor: Colors.white.withValues(alpha: 0.05),
+      highlightColor: Colors.white.withValues(alpha: 0.1),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(40),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Center(
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Container(
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

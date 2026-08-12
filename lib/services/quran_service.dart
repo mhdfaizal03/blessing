@@ -20,6 +20,11 @@ class QuranService {
     });
   }
 
+  /// Get Surah transliterated name
+  String getSurahName(int surahNumber) {
+    return quran.getSurahName(surahNumber);
+  }
+
   /// Get specific Surah details
   Map<String, dynamic> getSurahDetails(int surahNumber) {
     return {

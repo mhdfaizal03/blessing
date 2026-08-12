@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'package:blessing/constands/colors.dart';
 import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/local_storage_service.dart';
 import 'package:blessing/services/quran_service.dart';
+import 'package:blessing/views/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
-import 'package:marquee/marquee.dart';
 
 class SurahDetailScreen extends StatefulWidget {
   final int surahNumber;
@@ -23,6 +24,7 @@ class SurahDetailScreen extends StatefulWidget {
 
 class _SurahDetailScreenState extends State<SurahDetailScreen> {
   final AppColors colors = AppColors();
+  final Color primaryGreen = const Color(0xFF00FF66);
   final QuranService _quranService = QuranService();
   final LocalStorageService _storageService = LocalStorageService();
   final AudioPlayer _player = AudioPlayer();
@@ -30,12 +32,16 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
 
   Map<String, dynamic> _surahDetails = {};
   int _totalAyahs = 0;
-  int _currentAyahPlaying = -1;
+  int _currentAyahPlaying = 1;
   bool _isPlaying = false;
   bool _isLoadingAudio = false;
   bool _showTranslation = true;
-  int? _lastPlayedAyah;
   final Map<int, GlobalKey> _ayahKeys = {};
+
+  // Auto Scroll Controls
+  bool _isAutoScrolling = false;
+  double _scrollSpeed = 20.0; // px/sec
+  Timer? _autoScrollTimer;
 
   @override
   void initState() {
@@ -51,12 +57,22 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _stopAutoScroll();
+    _player.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadLastRead() async {
     final last = await _storageService.getLastRead();
     if (last != null && last['surah'] == widget.surahNumber) {
       if (mounted) {
         setState(() {
-          _lastPlayedAyah = last['ayah'];
+          if (widget.initialAyah == null && last['ayah'] != null) {
+            _currentAyahPlaying = last['ayah']!;
+          }
         });
       }
     }
@@ -68,12 +84,12 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
       if (key?.currentContext != null) {
         Scrollable.ensureVisible(
           key!.currentContext!,
-          duration: const Duration(milliseconds: 600),
+          duration: const Duration(milliseconds: 650),
           curve: Curves.easeInOutCubic,
-          alignment: 0.25, // Scroll verse smoothly to upper-third viewport
+          alignment: 0.38,
         );
       } else if (_scrollController.hasClients) {
-        double offset = (ayah - 1) * 220.0;
+        double offset = (ayah - 1) * 200.0;
         _scrollController.animateTo(
           offset.clamp(0.0, _scrollController.position.maxScrollExtent),
           duration: const Duration(milliseconds: 500),
@@ -92,18 +108,15 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   Future<void> _setupAudio() async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.speech());
+
     _player.playerStateStream.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state.playing;
           if (state.processingState == ProcessingState.completed) {
             _isPlaying = false;
-            // Auto play next verse & auto-scroll
-            if (_currentAyahPlaying != -1 &&
-                _currentAyahPlaying < _totalAyahs) {
+            if (_currentAyahPlaying < _totalAyahs) {
               _playAyah(_currentAyahPlaying + 1);
-            } else {
-              _currentAyahPlaying = -1;
             }
           }
         });
@@ -112,8 +125,10 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   }
 
   Future<void> _playAyah(int ayahNumber) async {
+    if (ayahNumber < 1 || ayahNumber > _totalAyahs) return;
+
     try {
-      if (_currentAyahPlaying == ayahNumber) {
+      if (_currentAyahPlaying == ayahNumber && _player.audioSource != null) {
         if (_isPlaying) {
           await _player.pause();
         } else {
@@ -128,13 +143,9 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
       setState(() {
         _isLoadingAudio = true;
         _currentAyahPlaying = ayahNumber;
-        _lastPlayedAyah = ayahNumber;
       });
 
-      // Smoothly auto-scroll to the active verse
       _scrollToAyah(ayahNumber);
-
-      // Save to local storage
       await _storageService.saveLastRead(widget.surahNumber, ayahNumber);
 
       final url = _quranService.getAudioUrl(widget.surahNumber, ayahNumber);
@@ -157,126 +168,166 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     }
   }
 
+  void _toggleAutoScroll(bool enable) {
+    setState(() {
+      _isAutoScrolling = enable;
+    });
+
+    if (enable) {
+      _startAutoScroll();
+    } else {
+      _stopAutoScroll();
+    }
+  }
+
+  void _startAutoScroll() {
+    _stopAutoScroll();
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 50), (
+      timer,
+    ) {
+      if (!_scrollController.hasClients) return;
+      double maxScroll = _scrollController.position.maxScrollExtent;
+      double currentScroll = _scrollController.offset;
+      double delta = (_scrollSpeed * 0.05);
+
+      if (currentScroll + delta >= maxScroll) {
+        _scrollController.jumpTo(maxScroll);
+        _toggleAutoScroll(false);
+      } else {
+        _scrollController.jumpTo(currentScroll + delta);
+      }
+    });
+  }
+
+  void _stopAutoScroll() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: colors.kSecondaryBg,
+      backgroundColor: const Color(0xFF090D16),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: CustomCircleIconButton(
-          icon: Icons.keyboard_arrow_left_rounded,
-          onTap: () {
-            Navigator.pop(context);
-          },
+        leading: Center(
+          child: CustomCircleIconButton(
+            icon: Icons.keyboard_arrow_left_rounded,
+            onTap: () => Navigator.pop(context),
+          ),
         ),
         centerTitle: true,
         title: Column(
           children: [
             Text(
-              _surahDetails['name'] ??
-                  '', // Transliterated name (e.g. Al-Fatihah)
-              style: const TextStyle(
-                fontSize: 16,
+              _surahDetails['name'] ?? '',
+              style: GoogleFonts.outfit(
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
             ),
             Text(
-              _surahDetails['englishMeaning']?.toUpperCase() ??
-                  '', // English Meaning
-              style: TextStyle(fontSize: 10, color: colors.kTextGrey),
+              _surahDetails['englishMeaning']?.toUpperCase() ?? '',
+              style: GoogleFonts.outfit(
+                fontSize: 10,
+                color: Colors.white54,
+                letterSpacing: 0.8,
+              ),
             ),
           ],
         ),
         actions: [
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: Text(
+          Row(
+            children: [
+              Icon(Icons.language_rounded, color: primaryGreen, size: 18),
+              const SizedBox(width: 4),
+              Text(
                 '${_surahDetails['type']}',
-                style: TextStyle(
-                  color: colors.kAccentNeon,
-                  fontSize: 12,
+                style: GoogleFonts.outfit(
+                  color: primaryGreen,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 16),
+            ],
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            _buildViewToggle(),
+            const SizedBox(height: 24),
+            _buildBismillah(),
+            const SizedBox(height: 24),
+            _showTranslation ? _buildVersesList() : _buildMushafView(),
+            if (!_showTranslation) ...[
+              const SizedBox(height: 20),
+              _buildAutoScrollControls(),
+            ],
+            const SizedBox(height: 140),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _buildBottomPlayerControls(),
+    );
+  }
+
+  // --- VIEW TOGGLE MATCHING SCREENSHOT ---
+  Widget _buildViewToggle() {
+    return Container(
+      width: 160,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _showTranslation = true),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: _showTranslation ? primaryGreen : Colors.transparent,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Icon(
+                  Icons.menu_rounded,
+                  color: _showTranslation ? Colors.black : Colors.white60,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _showTranslation = false),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: !_showTranslation ? primaryGreen : Colors.transparent,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Icon(
+                  Icons.menu_book_rounded,
+                  color: !_showTranslation ? Colors.black : Colors.white60,
+                  size: 20,
                 ),
               ),
             ),
           ),
         ],
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Column(
-              children: [
-                const SizedBox(height: 20),
-                _buildViewToggle(),
-                const SizedBox(height: 30),
-                _buildBismillah(),
-                SizedBox(height: _showTranslation ? 10 : 20),
-                _showTranslation ? _buildVersesList() : _buildMushafView(),
-                const SizedBox(height: 100), // Spacing for bottom sheet
-              ],
-            ),
-          ),
-          // We can remove the fixed bottom sheet or make it dynamic.
-          // For now, let's keep the player controls at the bottom nav bar.
-        ],
-      ),
-      bottomNavigationBar: _buildPlayerControls(),
-    );
-  }
-
-  @override
-  void dispose() {
-    _player.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildViewToggle() {
-    return Container(
-      width: 150,
-
-      // padding: const EdgeInsets.only(left: 5, right: 5),
-      decoration: BoxDecoration(
-        color: colors.kGlassWhite,
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: Row(
-        children: [
-          _toggleItem(Icons.notes, _showTranslation, () {
-            setState(() => _showTranslation = true);
-          }),
-          _toggleItem(Icons.menu_book_rounded, !_showTranslation, () {
-            setState(() => _showTranslation = false);
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleItem(IconData icon, bool isActive, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.linear,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isActive ? colors.kAccentNeon : Colors.transparent,
-            borderRadius: BorderRadius.circular(50),
-          ),
-          child: Icon(
-            icon,
-            color: isActive ? colors.kPrimaryBg : colors.kTextGrey,
-            size: 20,
-          ),
-        ),
       ),
     );
   }
@@ -286,7 +337,11 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
       child: Text(
         _quranService.getBasmala(),
         textAlign: TextAlign.center,
-        style: GoogleFonts.amiri(fontSize: 24, color: colors.kTextWhite),
+        style: GoogleFonts.amiri(
+          fontSize: 26,
+          color: Colors.white,
+          height: 1.8,
+        ),
       ),
     );
   }
@@ -303,15 +358,18 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     );
   }
 
+  // --- MUSHAF CONTINUOUS READING VIEW ---
   Widget _buildMushafView() {
     return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: colors.kGlassWhite,
-        borderRadius: BorderRadius.circular(10),
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
-      padding: const EdgeInsets.all(15),
       child: Directionality(
-        textDirection: TextDirection.ltr,
+        textDirection: TextDirection.rtl,
         child: RichText(
           textAlign: TextAlign.justify,
           text: TextSpan(
@@ -321,6 +379,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
                 widget.surahNumber,
                 verseNum,
               );
+              final isCurrentlyPlaying = verseNum == _currentAyahPlaying;
 
               return TextSpan(
                 children: [
@@ -328,21 +387,20 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
                     child: GestureDetector(
                       onTap: () => _playAyah(verseNum),
                       child: Text(
-                        arabic,
+                        "$arabic ﴿$verseNum﴾ ",
                         style: GoogleFonts.amiri(
                           fontSize: 24,
                           height: 2.2,
-                          fontWeight: verseNum == _currentAyahPlaying
+                          fontWeight: isCurrentlyPlaying
                               ? FontWeight.bold
                               : FontWeight.normal,
-                          color: verseNum == _currentAyahPlaying
-                              ? colors.kAccentNeon
-                              : colors.kTextWhite,
+                          color: isCurrentlyPlaying
+                              ? primaryGreen
+                              : Colors.white,
                         ),
                       ),
                     ),
                   ),
-                  const TextSpan(text: " "),
                 ],
               );
             }),
@@ -352,6 +410,82 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     );
   }
 
+  // --- AUTO SCROLL CONTROLS MATCHING SCREENSHOT ---
+  Widget _buildAutoScrollControls() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                "Scroll Speed",
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 7,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
+                    activeTrackColor: primaryGreen,
+                    inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                    thumbColor: primaryGreen,
+                  ),
+                  child: Slider(
+                    value: _scrollSpeed,
+                    min: 5.0,
+                    max: 50.0,
+                    onChanged: (val) {
+                      setState(() {
+                        _scrollSpeed = val;
+                      });
+                      if (_isAutoScrolling) {
+                        _startAutoScroll();
+                      }
+                    },
+                  ),
+                ),
+              ),
+              Text(
+                "${_scrollSpeed.toInt()} px/s",
+                style: GoogleFonts.outfit(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Auto Scroll",
+                style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
+              ),
+              Switch(
+                value: _isAutoScrolling,
+                onChanged: _toggleAutoScroll,
+                activeThumbColor: primaryGreen,
+                activeTrackColor: primaryGreen.withValues(alpha: 0.3),
+                inactiveThumbColor: Colors.white38,
+                inactiveTrackColor: Colors.white10,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- VERSE ITEM MATCHING SCREENSHOT ---
   Widget _buildVerseItem(int verseNum) {
     final key = _ayahKeys.putIfAbsent(verseNum, () => GlobalKey());
     final arabic = _quranService.getVerseArabic(widget.surahNumber, verseNum);
@@ -361,197 +495,178 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     );
     final isCurrentlyPlaying = _currentAyahPlaying == verseNum;
     final isPlayingAudio = isCurrentlyPlaying && _isPlaying;
-    final isLastRead = _lastPlayedAyah == verseNum;
 
     return Container(
       key: key,
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isCurrentlyPlaying
-            ? colors.kAccentNeon.withValues(alpha: 0.08)
-            : (isLastRead
-                ? colors.kAccentNeon.withValues(alpha: 0.03)
-                : colors.kSurface.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isCurrentlyPlaying
-              ? colors.kAccentNeon
-              : (isLastRead
-                  ? colors.kAccentNeon.withValues(alpha: 0.3)
-                  : colors.kGlassBorder),
-          width: isCurrentlyPlaying ? 1.5 : 1.0,
-        ),
-      ),
+      margin: const EdgeInsets.only(bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Action Bar for Verse
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: isCurrentlyPlaying
-                      ? colors.kAccentNeon
-                      : colors.kAccentNeon.withValues(alpha: 0.15),
+                  color: primaryGreen.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   "Ayah $verseNum",
-                  style: TextStyle(
-                    color: isCurrentlyPlaying
-                        ? colors.kPrimaryBg
-                        : colors.kAccentNeon,
-                    fontSize: 11,
+                  style: GoogleFonts.outfit(
+                    color: primaryGreen,
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              const Spacer(),
               IconButton(
                 onPressed: () => _playAyah(verseNum),
-                icon: _isLoadingAudio && _currentAyahPlaying == verseNum
+                icon: _isLoadingAudio && isCurrentlyPlaying
                     ? SizedBox(
-                        width: 18,
-                        height: 18,
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: colors.kAccentNeon,
+                          color: primaryGreen,
                         ),
                       )
                     : Icon(
                         isPlayingAudio
-                            ? Icons.pause_circle_filled
-                            : Icons.play_circle_fill,
-                        color: colors.kAccentNeon,
-                        size: 26,
+                            ? Icons.pause_circle_filled_rounded
+                            : Icons.play_circle_fill_rounded,
+                        color: primaryGreen,
+                        size: 28,
                       ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-
-          // Arabic Text
           Directionality(
             textDirection: TextDirection.rtl,
             child: Text(
-              arabic,
-              textAlign: TextAlign.justify,
+              "$arabic ﴿$verseNum﴾",
+              textAlign: TextAlign.right,
               style: GoogleFonts.amiri(
                 fontSize: 26,
                 height: 2.2,
-                color: Colors.white,
+                color: isCurrentlyPlaying ? primaryGreen : Colors.white,
+                fontWeight: isCurrentlyPlaying
+                    ? FontWeight.bold
+                    : FontWeight.normal,
               ),
             ),
           ),
-
-          const SizedBox(height: 12),
-
-          // Translation
+          const SizedBox(height: 10),
           Text(
             translation,
-            style: TextStyle(
-              color: colors.kTextGrey,
+            style: GoogleFonts.outfit(
+              color: Colors.white70,
               fontSize: 14,
               height: 1.5,
             ),
           ),
-
           const SizedBox(height: 16),
-          Divider(color: colors.kTextWhite.withValues(alpha: 0.1)),
+          Divider(color: Colors.white.withValues(alpha: 0.08)),
         ],
       ),
     );
   }
 
-  Widget _buildMarqueeOrText(String text, TextStyle style) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final textPainter = TextPainter(
-          text: TextSpan(text: text, style: style),
-          maxLines: 1,
-          textDirection: TextDirection.rtl,
-        )..layout();
-
-        if (textPainter.width <= constraints.maxWidth) {
-          return Center(
-            child: Text(
-              text,
-              style: style,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        } else {
-          return SizedBox(
-            height: 25,
-            child: Marquee(
-              text: "$text    ",
-              style: style,
-              scrollAxis: Axis.horizontal,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              blankSpace: 50.0,
-              velocity: 30.0,
-              pauseAfterRound: const Duration(seconds: 2),
-              startPadding: 10.0,
-              accelerationDuration: const Duration(seconds: 1),
-              accelerationCurve: Curves.linear,
-              decelerationDuration: const Duration(milliseconds: 500),
-              decelerationCurve: Curves.easeOut,
-            ),
-          );
-        }
-      },
-    );
-  }
-
-  Widget _buildPlayerControls() {
-    // Simplified Controls for now - showing current status
-    final style = TextStyle(
-      color: colors.kTextWhite,
-      fontWeight: FontWeight.bold,
-      fontSize: 18,
-    );
-
+  // --- BOTTOM PLAYER CONTROLS MATCHING SCREENSHOT ---
+  Widget _buildBottomPlayerControls() {
     return Container(
+      width: double.infinity,
       height: 80,
-      color: AppColors().kPrimaryBg,
       padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF131924),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: _currentAyahPlaying != -1
-                ? _buildMarqueeOrText(
-                    _quranService.getVerseArabic(
-                      widget.surahNumber,
-                      _currentAyahPlaying,
-                    ),
-                    style,
-                  )
-                : _buildMarqueeOrText(_surahDetails['name'] ?? '', style),
+            child: Text(
+              _surahDetails['name'] ?? 'Al Fatiha',
+              style: GoogleFonts.outfit(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _playAyah(_currentAyahPlaying),
+            child: Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: primaryGreen,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryGreen.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: _isLoadingAudio
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.black,
+                        ),
+                      )
+                    : Icon(
+                        _isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: Colors.black,
+                        size: 34,
+                      ),
+              ),
+            ),
           ),
           const SizedBox(width: 20),
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: colors.kAccentNeon,
-            child: IconButton(
-              icon: Icon(
-                _isPlaying ? Icons.pause : Icons.play_arrow_rounded,
-                color: colors.kPrimaryBg,
-                size: 30,
-              ),
-              onPressed: () {
-                if (_currentAyahPlaying != -1) {
-                  if (_isPlaying) {
-                    _player.pause();
-                  } else {
-                    _player.play();
-                  }
-                }
-              },
+          IconButton(
+            icon: Icon(Icons.settings_rounded, color: primaryGreen, size: 22),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.volume_up_rounded,
+              color: Colors.white,
+              size: 22,
             ),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text("Audio reciter: Mishary Alafasy"),
+                  backgroundColor: const Color(0xFF131924),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
           ),
         ],
       ),

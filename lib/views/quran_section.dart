@@ -1,10 +1,11 @@
 import 'package:blessing/constands/colors.dart';
-import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/local_storage_service.dart';
 import 'package:blessing/services/quran_service.dart';
 import 'package:blessing/views/juz_details_screen.dart';
+import 'package:blessing/views/prayer_times_screen.dart';
 import 'package:blessing/views/surah_details_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class QuranSection extends StatefulWidget {
   const QuranSection({super.key});
@@ -15,8 +16,10 @@ class QuranSection extends StatefulWidget {
 
 class _QuranSectionState extends State<QuranSection> {
   final AppColors colors = AppColors();
+  final Color primaryGreen = const Color(0xFF00FF66);
   final QuranService _quranService = QuranService();
   final LocalStorageService _storageService = LocalStorageService();
+
   List<Map<String, dynamic>> _allSurahs = [];
   List<Map<String, dynamic>> _filteredSurahs = [];
   List<Map<String, dynamic>> _allJuz = [];
@@ -85,67 +88,54 @@ class _QuranSectionState extends State<QuranSection> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: colors.kPrimaryBg,
+      backgroundColor: const Color(0xFF090D16),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        titleSpacing: 20,
         title: Text(
           'Quran',
-          style: TextStyle(
+          style: GoogleFonts.outfit(
             fontWeight: FontWeight.bold,
-            color: colors.kTextWhite,
-            fontSize: 22,
+            color: Colors.white,
+            fontSize: 24,
           ),
         ),
         actions: [
-          CustomCircleIconButton(
-            icon: Icons.notifications_none_rounded,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Notifications coming soon'),
-                  backgroundColor: colors.kCardBg,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.notifications_none_rounded, color: Colors.white70, size: 20),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PrayerTimesScreen()),
+                );
+              },
+            ),
           ),
-          CustomCircleIconButton(
-            icon: Icons.person_outline_rounded,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Profile coming soon'),
-                  backgroundColor: colors.kCardBg,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 10),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
           children: [
             const SizedBox(height: 10),
             _buildSearchBar(),
-            const SizedBox(height: 24),
-            _buildContinueReadingCard(),
-            const SizedBox(height: 24),
-            _buildTabSwitcher(),
             const SizedBox(height: 20),
+            _buildContinueReadingCard(),
+            const SizedBox(height: 20),
+            _buildTabSwitcher(),
+            const SizedBox(height: 16),
             _selectedTabIndex == 0 ? _buildSurahList() : _buildJuzList(),
-            const SizedBox(height: 100), // Spacing for floating navbar
+            const SizedBox(height: 120),
           ],
         ),
       ),
@@ -154,29 +144,29 @@ class _QuranSectionState extends State<QuranSection> {
 
   Widget _buildSearchBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: colors.kSurface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colors.kGlassBorder),
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: TextField(
         controller: _searchController,
         onChanged: _filterData,
-        style: TextStyle(color: colors.kTextWhite),
+        style: GoogleFonts.outfit(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
-          prefixIcon: Icon(Icons.search_rounded, color: colors.kTextGrey),
+          icon: const Icon(Icons.search_rounded, color: Colors.white38, size: 22),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-                  icon: Icon(Icons.clear_rounded, color: colors.kTextGrey, size: 18),
+                  icon: const Icon(Icons.clear_rounded, color: Colors.white38, size: 18),
                   onPressed: () {
                     _searchController.clear();
                     _filterData('');
                   },
                 )
               : null,
-          hintText: _selectedTabIndex == 0 ? "Search Surah by name or number..." : "Search Juz...",
-          hintStyle: TextStyle(color: colors.kTextMuted, fontSize: 13),
+          hintText: _selectedTabIndex == 0 ? "Search Surah..." : "Search Juz...",
+          hintStyle: GoogleFonts.outfit(color: Colors.white38, fontSize: 14),
           border: InputBorder.none,
         ),
       ),
@@ -199,81 +189,81 @@ class _QuranSectionState extends State<QuranSection> {
         ).then((_) => _loadLastRead());
       },
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: colors.kSecondaryBg,
+          color: const Color(0xFF131924),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colors.kGlassBorder),
-          image: const DecorationImage(
-            image: NetworkImage(
-              'https://images.unsplash.com/photo-1544947950-fa07a98d237f',
-            ),
-            fit: BoxFit.cover,
-            opacity: 0.1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Opacity(
+                  opacity: 0.12,
+                  child: Image.network(
+                    'https://images.unsplash.com/photo-1609599006353-e629aaabfeae',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: colors.kAccentNeon.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    "LAST READ",
-                    style: TextStyle(
-                      color: colors.kAccentNeon,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.8,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "CONTINUE READING",
+                      style: GoogleFonts.outfit(
+                        color: primaryGreen,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 6),
+                    Text(
+                      surahName,
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Ayah $ayahNum",
+                      style: GoogleFonts.outfit(
+                        color: Colors.white60,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  surahName,
-                  style: TextStyle(
-                    color: colors.kTextWhite,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: primaryGreen,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryGreen.withValues(alpha: 0.35),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                ),
-                Text(
-                  "Ayah $ayahNum",
-                  style: TextStyle(
-                    color: colors.kTextGrey,
-                    fontSize: 13,
+                  child: const Center(
+                    child: Icon(Icons.play_arrow_rounded, color: Colors.black, size: 34),
                   ),
                 ),
               ],
-            ),
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                gradient: colors.emeraldGradient,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: colors.kAccentNeon.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 30),
             ),
           ],
         ),
@@ -285,9 +275,9 @@ class _QuranSectionState extends State<QuranSection> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: colors.kSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.kGlassBorder),
+        color: const Color(0xFF131924),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: [
@@ -296,21 +286,22 @@ class _QuranSectionState extends State<QuranSection> {
               onTap: () => setState(() => _selectedTabIndex = 0),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 11),
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
                   color: _selectedTabIndex == 0
-                      ? colors.kAccentNeon
+                      ? primaryGreen
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
                   "Surah",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                     fontWeight: FontWeight.bold,
+                    fontSize: 15,
                     color: _selectedTabIndex == 0
-                        ? colors.kPrimaryBg
-                        : colors.kTextGrey,
+                        ? Colors.black
+                        : Colors.white60,
                   ),
                 ),
               ),
@@ -321,21 +312,22 @@ class _QuranSectionState extends State<QuranSection> {
               onTap: () => setState(() => _selectedTabIndex = 1),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 11),
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
                   color: _selectedTabIndex == 1
-                      ? colors.kAccentNeon
+                      ? primaryGreen
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
                   "Juz",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                     fontWeight: FontWeight.bold,
+                    fontSize: 15,
                     color: _selectedTabIndex == 1
-                        ? colors.kPrimaryBg
-                        : colors.kTextGrey,
+                        ? Colors.black
+                        : Colors.white60,
                   ),
                 ),
               ),
@@ -374,70 +366,80 @@ class _QuranSectionState extends State<QuranSection> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: colors.kSecondaryBg,
+        color: const Color(0xFF131924),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isLastRead
-              ? colors.kAccentNeon
-              : colors.kGlassBorder,
+              ? primaryGreen
+              : Colors.white.withValues(alpha: 0.06),
           width: isLastRead ? 1.5 : 1.0,
         ),
       ),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: colors.kAccentNeon.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-              border: Border.all(color: colors.kAccentNeon.withValues(alpha: 0.3)),
-            ),
-            child: Center(
-              child: Text(
-                "${surah['id']}",
-                style: TextStyle(
-                  color: colors.kAccentNeon,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
+          // Star Icon with Surah Number inside
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  Icons.star_rounded,
+                  size: 44,
+                  color: primaryGreen.withValues(alpha: 0.15),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 15),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                surah['name'],
-                style: TextStyle(
-                  color: colors.kTextWhite,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.location_on_outlined, size: 12, color: colors.kTextGrey),
-                  const SizedBox(width: 4),
-                  Text(
-                    "${surah['type'].toString().toUpperCase()} • ${surah['ayahs']} AYAHS",
-                    style: TextStyle(color: colors.kTextGrey, fontSize: 10, fontWeight: FontWeight.w600),
+                Text(
+                  "${surah['id']}",
+                  style: GoogleFonts.outfit(
+                    color: primaryGreen,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  surah['name'],
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Icon(Icons.location_on_rounded, size: 12, color: Colors.white38),
+                    const SizedBox(width: 4),
+                    Text(
+                      "${surah['type'].toString().toUpperCase()} • ${surah['ayahs']} AYAHS",
+                      style: GoogleFonts.outfit(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(
             surah['arabicName'] ?? "",
-            style: TextStyle(
-              color: colors.kAccentNeon,
-              fontSize: 22,
-              fontFamily: 'Amiri',
+            style: GoogleFonts.amiri(
+              color: primaryGreen,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -470,57 +472,60 @@ class _QuranSectionState extends State<QuranSection> {
   Widget _buildJuzItem(Map<String, dynamic> juz) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: colors.kSecondaryBg,
+        color: const Color(0xFF131924),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.kGlassBorder),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: colors.kAccentNeon.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-              border: Border.all(color: colors.kAccentNeon.withValues(alpha: 0.3)),
-            ),
-            child: Center(
-              child: Text(
-                "${juz['id']}",
-                style: TextStyle(
-                  color: colors.kAccentNeon,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  Icons.star_rounded,
+                  size: 44,
+                  color: primaryGreen.withValues(alpha: 0.15),
                 ),
-              ),
+                Text(
+                  "${juz['id']}",
+                  style: GoogleFonts.outfit(
+                    color: primaryGreen,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 15),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   juz['name'],
-                  style: TextStyle(
-                    color: colors.kTextWhite,
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   juz['description'],
-                  style: TextStyle(color: colors.kTextGrey, fontSize: 11),
+                  style: GoogleFonts.outfit(color: Colors.white38, fontSize: 11),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          Icon(Icons.arrow_forward_ios_rounded, color: colors.kTextGrey, size: 14),
+          const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
         ],
       ),
     );
