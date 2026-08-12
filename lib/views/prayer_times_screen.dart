@@ -31,7 +31,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Timer? _timer;
 
   // Azan settings
-  Map<String, bool> _azanEnabled = {
+  final Map<String, bool> _azanEnabled = {
     "Fajr": false,
     "Dhuhr": false,
     "Asr": false,
@@ -245,7 +245,56 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 ),
                 const SizedBox(height: 30),
                 if (_prayerTimes == null)
-                  CircularProgressIndicator(color: colors.kAccentNeon)
+                  if (_currentAddress == "Location Error")
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.location_off_outlined,
+                            size: 48,
+                            color: colors.kTextGrey,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            "Unable to load prayer times",
+                            style: TextStyle(
+                              color: colors.kTextWhite,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Please check your location settings and network connection.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: colors.kTextGrey,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            onPressed: _initData,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text(
+                              "Retry",
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.kAccentNeon,
+                              foregroundColor: colors.kPrimaryBg,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    CircularProgressIndicator(color: colors.kAccentNeon)
                 else
                   ListView(
                     physics: const NeverScrollableScrollPhysics(),
@@ -316,29 +365,35 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     bool isSunrise = false,
     Function(bool)? onToggle,
   }) {
-    // If it's next, we highlight it differently
     final bool isHighlighted = isNext;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isHighlighted ? Colors.transparent : colors.kCardBg,
-        borderRadius: BorderRadius.circular(20),
-        border: isHighlighted
-            ? Border.all(color: colors.kAccentNeon, width: 1)
-            : null,
+        color: isHighlighted
+            ? colors.kAccentNeon.withValues(alpha: 0.1)
+            : colors.kSecondaryBg,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isHighlighted ? colors.kAccentNeon : colors.kGlassBorder,
+          width: isHighlighted ? 1.5 : 1.0,
+        ),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isHighlighted ? colors.kAccentNeon : colors.kAccentDark,
-              borderRadius: BorderRadius.circular(10),
+              color: isHighlighted
+                  ? colors.kAccentNeon
+                  : colors.kAccentNeon.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              Icons.notifications_active_outlined,
+              isSunrise
+                  ? Icons.wb_sunny_rounded
+                  : Icons.notifications_active_rounded,
               color: isHighlighted ? colors.kPrimaryBg : colors.kAccentNeon,
               size: 20,
             ),
@@ -349,10 +404,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             children: [
               Text(
                 name,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: colors.kTextWhite,
                   fontWeight: FontWeight.bold,
-                  fontSize: 18,
+                  fontSize: 17,
                 ),
               ),
               if (isNext)
@@ -362,6 +417,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                     color: colors.kAccentNeon,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
                   ),
                 ),
             ],
@@ -370,16 +426,17 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           Text(
             time,
             style: TextStyle(
-              color: colors.kTextGrey,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
+              color: isHighlighted ? colors.kAccentNeon : colors.kTextWhite,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(width: 10),
           if (!isSunrise)
             Switch(
               value: isActive,
-              activeColor: colors.kAccentNeon,
+              activeTrackColor: colors.kAccentNeon.withValues(alpha: 0.5),
+              activeThumbColor: colors.kAccentNeon,
               onChanged: onToggle,
             ),
         ],

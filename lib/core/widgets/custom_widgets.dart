@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 
+/// A reusable circular icon button used consistently across all screens.
 class CustomCircleIconButton extends StatelessWidget {
-  IconData icon;
-  Function() onTap;
-  CustomCircleIconButton({super.key, required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const CustomCircleIconButton({
+    super.key,
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {

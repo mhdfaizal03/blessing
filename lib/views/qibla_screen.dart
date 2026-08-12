@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:blessing/constands/colors.dart';
+import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/local_storage_service.dart';
 import 'package:blessing/services/qibla_service.dart';
 import 'package:flutter/material.dart';
@@ -169,66 +170,86 @@ class _QiblaScreenState extends State<QiblaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors();
     return Scaffold(
+      backgroundColor: colors.kPrimaryBg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Qibla',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        actions: const [
-          Icon(Icons.notifications_none, color: Colors.white),
-          SizedBox(width: 15),
-          CircleAvatar(radius: 14, child: Icon(Icons.person, size: 18)),
-          SizedBox(width: 15),
-        ],
-      ),
-      body: SizedBox.expand(
-        child: Container(
-          decoration: const BoxDecoration(),
-          child: SafeArea(
-            child: _isLoading
-                ? _buildShimmerLoading()
-                : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: 10),
-
-                        RepaintBoundary(child: _buildLocationCard()),
-
-                        const SizedBox(height: 30),
-
-                        if (!_hasPermission) _buildPermissionCard(),
-
-                        const SizedBox(height: 10),
-
-                        if (_hasPermission)
-                          Center(
-                            child: RepaintBoundary(
-                              child: _buildCompassDial(
-                                deviceHeading: _deviceHeading,
-                                qiblaBearing: _qiblaBearing,
-                              ),
-                            ),
-                          ),
-
-                        const SizedBox(height: 30),
-
-                        if (_hasPermission) _buildDirectionText(),
-
-                        const SizedBox(height: 30),
-
-                        if (_hasPermission) _buildStatsRow(),
-
-                        const SizedBox(height: 20),
-                      ],
-                    ),
-                  ),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: colors.kTextWhite,
+            fontSize: 22,
           ),
         ),
+        actions: [
+          CustomCircleIconButton(
+            icon: Icons.notifications_none_rounded,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Notifications coming soon'),
+                  backgroundColor: colors.kCardBg,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+          CustomCircleIconButton(
+            icon: Icons.person_outline_rounded,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Profile coming soon'),
+                  backgroundColor: colors.kCardBg,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 10),
+        ],
+      ),
+      body: SafeArea(
+        child: _isLoading
+            ? _buildShimmerLoading()
+            : SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 10),
+                    RepaintBoundary(child: _buildLocationCard()),
+                    const SizedBox(height: 30),
+                    if (!_hasPermission) _buildPermissionCard(),
+                    if (_hasPermission) ...[
+                      Center(
+                        child: RepaintBoundary(
+                          child: _buildCompassDial(
+                            deviceHeading: _deviceHeading,
+                            qiblaBearing: _qiblaBearing,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      _buildDirectionText(),
+                      const SizedBox(height: 28),
+                      _buildStatsRow(),
+                    ],
+                    const SizedBox(height: 100), // Spacing for floating navbar
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -236,24 +257,29 @@ class _QiblaScreenState extends State<QiblaScreen> {
   // ---------------- LOCATION CARD ----------------
 
   Widget _buildLocationCard() {
+    final colors = AppColors();
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.06),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.18)),
+            color: colors.kGlassWhite,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: colors.kGlassBorder),
           ),
           child: Row(
             children: [
-              CircleAvatar(
-                backgroundColor: const Color(0xFF1A301A).withOpacity(0.75),
-                child: Icon(Icons.location_on, color: kAccentGreen, size: 20),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: colors.kAccentNeon.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.location_on_rounded, color: colors.kAccentNeon, size: 20),
               ),
-              const SizedBox(width: 15),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,9 +288,10 @@ class _QiblaScreenState extends State<QiblaScreen> {
                     Text(
                       "CURRENT LOCATION",
                       style: TextStyle(
-                        color: kTextGrey,
+                        color: colors.kTextGrey,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -272,21 +299,22 @@ class _QiblaScreenState extends State<QiblaScreen> {
                       _currentAddress,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: colors.kTextWhite,
                         fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: _initQibla,
                 child: Text(
-                  "CHANGE",
+                  "REFRESH",
                   style: TextStyle(
-                    color: kAccentGreen,
-                    fontSize: 12,
+                    color: colors.kAccentNeon,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -301,55 +329,58 @@ class _QiblaScreenState extends State<QiblaScreen> {
   // ---------------- PERMISSION CARD ----------------
 
   Widget _buildPermissionCard() {
+    final colors = AppColors();
     return RepaintBoundary(
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.red.withOpacity(0.3)),
+              color: Colors.red.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons.location_disabled,
-                  color: Colors.red,
-                  size: 40,
+                  Icons.location_disabled_rounded,
+                  color: Colors.redAccent,
+                  size: 44,
                 ),
-                const SizedBox(height: 10),
-                const Text(
+                const SizedBox(height: 12),
+                Text(
                   "Location Permission Required",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.kTextWhite,
                     fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
                 Text(
-                  "Please enable location permissions to use Qibla Finder.",
+                  "Please enable location permissions to locate Makkah direction accurately.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: kTextGrey, fontSize: 12),
+                  style: TextStyle(color: colors.kTextGrey, fontSize: 13),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 18),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: kAccentGreen,
-                    foregroundColor: Colors.black,
+                    backgroundColor: colors.kAccentNeon,
+                    foregroundColor: colors.kPrimaryBg,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
                   onPressed: () async {
                     await Geolocator.openAppSettings();
                     if (!mounted) return;
                     await _initQibla();
                   },
-                  child: const Text("Open Settings"),
+                  child: const Text("Open Settings", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
@@ -365,6 +396,7 @@ class _QiblaScreenState extends State<QiblaScreen> {
     required double deviceHeading,
     required double qiblaBearing,
   }) {
+    final colors = AppColors();
     final double needleAngle = (qiblaBearing - deviceHeading) * (math.pi / 180);
 
     return SizedBox(
@@ -373,16 +405,25 @@ class _QiblaScreenState extends State<QiblaScreen> {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Outer Outer Ring Glow
           Container(
             width: _dialSize,
             height: _dialSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white10, width: 1),
+              color: colors.kSurface,
+              border: Border.all(color: colors.kGlassBorder, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.kAccentNeon.withValues(alpha: 0.1),
+                  blurRadius: 25,
+                  spreadRadius: 5,
+                ),
+              ],
             ),
           ),
 
-          // labels (bounded stack – FIX)
+          // Cardinal labels
           Transform.rotate(
             angle: -deviceHeading * (math.pi / 180),
             child: SizedBox(
@@ -392,42 +433,46 @@ class _QiblaScreenState extends State<QiblaScreen> {
                 alignment: Alignment.center,
                 children: [
                   Positioned(
-                    top: 10,
+                    top: 14,
                     child: Text(
                       "N",
                       style: TextStyle(
-                        color: kTextGrey,
+                        color: colors.kAccentNeon,
                         fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
                     ),
                   ),
                   Positioned(
-                    bottom: 10,
+                    bottom: 14,
                     child: Text(
                       "S",
                       style: TextStyle(
-                        color: kTextGrey,
+                        color: colors.kTextGrey,
                         fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
                     ),
                   ),
                   Positioned(
-                    left: 10,
+                    left: 14,
                     child: Text(
                       "W",
                       style: TextStyle(
-                        color: kTextGrey,
+                        color: colors.kTextGrey,
                         fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
                     ),
                   ),
                   Positioned(
-                    right: 10,
+                    right: 14,
                     child: Text(
                       "E",
                       style: TextStyle(
-                        color: kTextGrey,
+                        color: colors.kTextGrey,
                         fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
                     ),
                   ),
@@ -436,7 +481,7 @@ class _QiblaScreenState extends State<QiblaScreen> {
             ),
           ),
 
-          // needle
+          // Qibla needle pointer
           Transform.rotate(
             angle: needleAngle,
             child: SizedBox(
@@ -446,22 +491,35 @@ class _QiblaScreenState extends State<QiblaScreen> {
                 alignment: Alignment.center,
                 children: [
                   Container(
-                    width: 2,
+                    width: 3,
                     height: 220,
-                    color: kAccentGreen.withOpacity(0.35),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [colors.kAccentNeon, colors.kAccentNeon.withValues(alpha: 0.1)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                   Positioned(
-                    top: 0,
+                    top: 4,
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: kAccentGreen,
+                        gradient: colors.emeraldGradient,
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.kAccentNeon.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                          ),
+                        ],
                       ),
                       child: const Icon(
-                        Icons.mosque,
+                        Icons.mosque_rounded,
                         color: Colors.black,
-                        size: 24,
+                        size: 22,
                       ),
                     ),
                   ),
@@ -470,13 +528,20 @@ class _QiblaScreenState extends State<QiblaScreen> {
             ),
           ),
 
+          // Center Pivot Dot
           Container(
-            height: 12,
-            width: 12,
+            height: 14,
+            width: 14,
             decoration: BoxDecoration(
-              color: kAccentGreen,
+              color: colors.kAccentNeon,
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: kAccentGreen, blurRadius: 10)],
+              border: Border.all(color: colors.kPrimaryBg, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.kAccentNeon,
+                  blurRadius: 8,
+                ),
+              ],
             ),
           ),
         ],
@@ -487,6 +552,7 @@ class _QiblaScreenState extends State<QiblaScreen> {
   // ---------------- DIRECTION TEXT ----------------
 
   Widget _buildDirectionText() {
+    final colors = AppColors();
     final dir = _bearingToDirection(_qiblaBearing);
 
     return Column(
@@ -498,8 +564,8 @@ class _QiblaScreenState extends State<QiblaScreen> {
           children: [
             Text(
               "${_qiblaBearing.toStringAsFixed(2)}°",
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: colors.kTextWhite,
                 fontSize: 36,
                 fontWeight: FontWeight.bold,
               ),
@@ -508,16 +574,17 @@ class _QiblaScreenState extends State<QiblaScreen> {
             Text(
               dir,
               style: TextStyle(
-                color: kAccentGreen,
+                color: colors.kAccentNeon,
                 fontSize: 36,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 4),
         Text(
           "Calibrated to your location",
-          style: TextStyle(color: kTextGrey, fontSize: 13),
+          style: TextStyle(color: colors.kTextGrey, fontSize: 13),
         ),
       ],
     );
@@ -537,16 +604,18 @@ class _QiblaScreenState extends State<QiblaScreen> {
   // ---------------- STATS ----------------
 
   Widget _buildStatsRow() {
+    final colors = AppColors();
     return Row(
       children: [
-        _statBox("DISTANCE", _distance, Colors.white),
+        _statBox("DISTANCE", _distance, colors.kTextWhite),
         const SizedBox(width: 15),
-        _statBox("DIRECTION", "Makkah", kAccentGreen),
+        _statBox("DIRECTION", "Makkah", colors.kAccentNeon),
       ],
     );
   }
 
   Widget _statBox(String label, String value, Color valColor) {
+    final colors = AppColors();
     return Expanded(
       child: RepaintBoundary(
         child: ClipRRect(
@@ -556,9 +625,9 @@ class _QiblaScreenState extends State<QiblaScreen> {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: colors.kGlassWhite,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.18)),
+                border: Border.all(color: colors.kGlassBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -566,9 +635,10 @@ class _QiblaScreenState extends State<QiblaScreen> {
                   Text(
                     label,
                     style: TextStyle(
-                      color: kTextGrey,
+                      color: colors.kTextGrey,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -591,14 +661,13 @@ class _QiblaScreenState extends State<QiblaScreen> {
 
   Widget _buildShimmerLoading() {
     return Shimmer.fromColors(
-      baseColor: Colors.white.withOpacity(0.05),
-      highlightColor: Colors.white.withOpacity(0.1),
+      baseColor: Colors.white.withValues(alpha: 0.05),
+      highlightColor: Colors.white.withValues(alpha: 0.1),
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           children: [
             const SizedBox(height: 10),
-            // Location Card Skeleton
             Container(
               height: 80,
               decoration: BoxDecoration(
@@ -607,7 +676,6 @@ class _QiblaScreenState extends State<QiblaScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            // Compass Skeleton
             Center(
               child: Container(
                 width: _dialSize,
@@ -619,7 +687,6 @@ class _QiblaScreenState extends State<QiblaScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            // Direction Text Skeleton
             Center(
               child: Container(
                 height: 45,
@@ -631,7 +698,6 @@ class _QiblaScreenState extends State<QiblaScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            // Stats Row Skeleton
             Row(
               children: [
                 Expanded(

@@ -1,10 +1,11 @@
 import 'dart:io';
+import 'package:adhan/adhan.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -14,14 +15,19 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  bool _isInitialized = false;
+
   Future<void> init() async {
+    if (_isInitialized) return;
     try {
       tz_data.initializeTimeZones();
       final TimezoneInfo info = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(info.identifier));
     } catch (e) {
-      debugPrint('Could not get local timezone: $e. Falling back to UTC.');
-      tz.setLocalLocation(tz.getLocation('UTC'));
+      debugPrint('Timezone initialization fallback: $e');
+      try {
+        tz.setLocalLocation(tz.getLocation('UTC'));
+      } catch (_) {}
     }
 
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -30,11 +36,10 @@ class NotificationService {
     const InitializationSettings initializationSettings =
         InitializationSettings(android: initializationSettingsAndroid);
 
-    // In 20.x, initialize takes named parameter 'settings'
     await _notificationsPlugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (response) {
-        // Handle notification tap
+        debugPrint("Notification tapped: ${response.payload}");
       },
     );
 
@@ -44,41 +49,105 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin
           >();
       await android?.requestNotificationsPermission();
+      await android?.requestExactAlarmsPermission();
     }
 
-    // Listen for volume changes to stop Azan
-    FlutterVolumeController.addListener((volume) {
-      cancelAllNotifications();
-      debugPrint('Volume changed to $volume. Azan stopped.');
-    });
+    _isInitialized = true;
   }
 
+  /// Alias for schedulePrayerAzan
   Future<void> scheduleAzan({
     required int id,
     required String title,
     required DateTime scheduledDate,
   }) async {
-    if (scheduledDate.isBefore(DateTime.now())) return;
+    await schedulePrayerAzan(id: id, title: title, scheduledTime: scheduledDate);
+  }
 
-    // In 20.x, zonedSchedule uses ONLY named parameters
-    await _notificationsPlugin.zonedSchedule(
-      id: id,
-      title: title,
-      body: 'It is time for $title',
-      scheduledDate: tz.TZDateTime.from(scheduledDate, tz.local),
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'azan_channel', // positional in constructor?
-          'Azan Notifications', // positional?
-          channelDescription: 'Notifications for prayer times with Azan sound',
-          importance: Importance.max,
-          priority: Priority.high,
-          sound: RawResourceAndroidNotificationSound('azan'),
-          playSound: true,
-        ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+  /// Schedules a prayer Azan alarm at exact scheduledTime with high priority & sound
+  Future<void> schedulePrayerAzan({
+    required int id,
+    required String title,
+    required DateTime scheduledTime,
+  }) async {
+    await init();
+    if (scheduledTime.isBefore(DateTime.now())) return;
+
+    const androidDetails = AndroidNotificationDetails(
+      'azan_alarm_channel_v2',
+      'Azan Prayer Alarms',
+      channelDescription: 'Plays Azan audio alert at exact prayer times',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound('azan'),
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      fullScreenIntent: true,
     );
+
+    const details = NotificationDetails(android: androidDetails);
+
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        id: id,
+        title: 'Time for $title Prayer 🕌',
+        body: 'Hayya ala-s-Salah! It is time for $title prayer.',
+        scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+      debugPrint('Scheduled $title Azan alarm at $scheduledTime');
+    } catch (e) {
+      debugPrint('Failed to schedule $title Azan: $e');
+    }
+  }
+
+  /// Synchronizes prayer notifications with user Settings preferences
+  Future<void> syncPrayerNotifications(PrayerTimes prayerTimes) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final fajrEnabled = prefs.getBool('notif_fajr') ?? true;
+    final sunriseEnabled = prefs.getBool('notif_sunrise') ?? false;
+    final dhuhrEnabled = prefs.getBool('notif_dhuhr') ?? true;
+    final asrEnabled = prefs.getBool('notif_asr') ?? true;
+    final maghribEnabled = prefs.getBool('notif_maghrib') ?? true;
+    final ishaEnabled = prefs.getBool('notif_isha') ?? true;
+
+    if (fajrEnabled) {
+      await schedulePrayerAzan(id: 1, title: 'Fajr', scheduledTime: prayerTimes.fajr);
+    } else {
+      await cancelNotification(1);
+    }
+
+    if (sunriseEnabled) {
+      await schedulePrayerAzan(id: 2, title: 'Sunrise', scheduledTime: prayerTimes.sunrise);
+    } else {
+      await cancelNotification(2);
+    }
+
+    if (dhuhrEnabled) {
+      await schedulePrayerAzan(id: 3, title: 'Dhuhr', scheduledTime: prayerTimes.dhuhr);
+    } else {
+      await cancelNotification(3);
+    }
+
+    if (asrEnabled) {
+      await schedulePrayerAzan(id: 4, title: 'Asr', scheduledTime: prayerTimes.asr);
+    } else {
+      await cancelNotification(4);
+    }
+
+    if (maghribEnabled) {
+      await schedulePrayerAzan(id: 5, title: 'Maghrib', scheduledTime: prayerTimes.maghrib);
+    } else {
+      await cancelNotification(5);
+    }
+
+    if (ishaEnabled) {
+      await schedulePrayerAzan(id: 6, title: 'Isha', scheduledTime: prayerTimes.isha);
+    } else {
+      await cancelNotification(6);
+    }
   }
 
   Future<void> cancelNotification(int id) async {

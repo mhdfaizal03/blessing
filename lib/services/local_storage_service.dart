@@ -183,4 +183,42 @@ class LocalStorageService {
       }
     }
   }
+
+  /// Fasting logger helpers
+  Future<bool> isFastingLoggedToday() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return prefs.getBool('fasting_log_$dateStr') ?? false;
+  }
+
+  Future<void> setFastingLoggedToday(bool status) async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    await prefs.setBool('fasting_log_$dateStr', status);
+  }
+
+  /// Habits logger helpers
+  Future<Map<String, bool>> getHabitsState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final habits = <String, bool>{};
+
+    for (var key in prefs.getKeys()) {
+      if (key.startsWith('habit_log_${dateStr}_')) {
+        final habitId = key.replaceFirst('habit_log_${dateStr}_', '');
+        habits[habitId] = prefs.getBool(key) ?? false;
+      }
+    }
+    return habits;
+  }
+
+  Future<void> saveHabitsState(Map<String, bool> habits) async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    for (var entry in habits.entries) {
+      final key = 'habit_log_${dateStr}_${entry.key}';
+      await prefs.setBool(key, entry.value);
+    }
+  }
 }

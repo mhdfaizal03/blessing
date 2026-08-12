@@ -114,6 +114,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: colors.kPrimaryBg,
       appBar: AppBar(
         centerTitle: true,
         title: Text(
@@ -155,8 +156,9 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
   }
 
   List<Widget> _buildPrayerItems() {
-    if (_dayPrayerTimes == null)
+    if (_dayPrayerTimes == null) {
       return [const Text("Location required for prayer times")];
+    }
 
     final prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
     final icons = {
@@ -174,7 +176,8 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
         onTap: () => _togglePrayer(name),
         child: _buildPrayerItem(
           name,
-          DateFormat('h:mm A').format(time),
+          // FIX: Correct Dart intl format — lowercase 'a' for AM/PM (Guideline §17 Forms).
+          DateFormat('h:mm a').format(time),
           icons[name]!,
           isLogged,
         ),
@@ -249,7 +252,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
                     d,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: colors.kTextGrey.withOpacity(0.5),
+                      color: colors.kTextGrey.withValues(alpha: 0.5),
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -325,7 +328,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
             shape: BoxShape.circle,
             border: isToday && !isSelected
                 ? Border.all(
-                    color: colors.kAccentNeon.withOpacity(0.5),
+                    color: colors.kAccentNeon.withValues(alpha: 0.5),
                     width: 1,
                   )
                 : null,
@@ -338,7 +341,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
                   ? colors.kPrimaryBg
                   : (isToday
                         ? colors.kAccentNeon
-                        : colors.kTextWhite.withOpacity(0.8)),
+                        : colors.kTextWhite.withValues(alpha: 0.8)),
               fontWeight: FontWeight.bold,
               fontSize: 13,
             ),
@@ -366,7 +369,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
           "$_streak Days",
           _streak > 0 ? "Keep it up!" : "Start your journey",
           Icons.local_fire_department,
-          colors.kAccentNeon.withOpacity(0.8),
+          colors.kAccentNeon.withValues(alpha: 0.8),
         ),
         const SizedBox(width: 15),
         _statCard(
@@ -374,7 +377,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
           "$_totalPrayers",
           "Consistent Growth",
           Icons.auto_awesome,
-          colors.kAccentNeon.withOpacity(0.6),
+          colors.kAccentNeon.withValues(alpha: 0.6),
         ),
       ],
     );
@@ -429,21 +432,33 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
   }
 
   Widget _buildLogButton() {
+    // FIX: Button now opens a dialog to log an unprayed prayer (Guideline §16 Button States).
+    final unlogged = _loggedPrayers.entries
+        .where((e) => !e.value)
+        .map((e) => e.key)
+        .toList();
+
     return SizedBox(
       width: double.infinity,
       height: 55,
       child: ElevatedButton.icon(
-        onPressed: () {},
+        onPressed: unlogged.isEmpty
+            ? null // Disabled when all prayers are logged
+            : () => _showLogDialog(unlogged),
         icon: Icon(Icons.add_circle_outline, color: colors.kPrimaryBg),
         label: Text(
-          "Log Missing Prayer",
+          unlogged.isEmpty ? 'All Prayers Logged ✓' : 'Log Missing Prayer',
           style: TextStyle(
             color: colors.kPrimaryBg,
             fontWeight: FontWeight.bold,
           ),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: colors.kAccentNeon,
+          backgroundColor: unlogged.isEmpty
+              ? Colors.white24
+              : colors.kAccentNeon,
+          disabledBackgroundColor: Colors.white24,
+          disabledForegroundColor: Colors.white54,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
@@ -451,6 +466,75 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
         ),
       ),
     );
+  }
+
+  /// Shows a bottom sheet allowing the user to select which prayer to log.
+  Future<void> _showLogDialog(List<String> unlogged) async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: colors.kSecondaryBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Which prayer to log?',
+              style: TextStyle(
+                color: colors.kTextWhite,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...unlogged.map(
+              (name) => Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  leading: Icon(Icons.circle_outlined, color: colors.kAccentNeon),
+                  title: Text(name, style: TextStyle(color: colors.kTextWhite)),
+                  onTap: () => Navigator.pop(ctx, name),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await _togglePrayer(selected);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$selected logged successfully'),
+            backgroundColor: colors.kCardBg,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildPrayerListHeader() {
@@ -527,7 +611,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
             isComplete ? Icons.check_circle : Icons.radio_button_unchecked,
             color: isComplete
                 ? colors.kAccentNeon
-                : colors.kTextGrey.withOpacity(0.3),
+                : colors.kTextGrey.withValues(alpha: 0.3),
             size: 24,
           ),
         ],
@@ -542,18 +626,21 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
       decoration: BoxDecoration(
         color: colors.kSecondaryBg,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colors.kAccentNeon.withOpacity(0.1)),
+        border: Border.all(color: colors.kAccentNeon.withValues(alpha: 0.1)),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [colors.kAccentNeon.withOpacity(0.05), colors.kSecondaryBg],
+          colors: [
+            colors.kAccentNeon.withValues(alpha: 0.05),
+            colors.kSecondaryBg,
+          ],
         ),
       ),
       child: Column(
         children: [
           Icon(
             Icons.format_quote_rounded,
-            color: colors.kAccentNeon.withOpacity(0.3),
+            color: colors.kAccentNeon.withValues(alpha: 0.3),
             size: 32,
           ),
           const SizedBox(height: 10),
@@ -561,7 +648,7 @@ class _PrayerJourneyScreenState extends State<PrayerJourneyScreen> {
             "\"The most beloved of deeds to Allah are those that are most consistent, even if they are small.\"",
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: colors.kTextWhite.withOpacity(0.7),
+              color: colors.kTextWhite.withValues(alpha: 0.7),
               fontStyle: FontStyle.italic,
               fontSize: 14,
               height: 1.6,

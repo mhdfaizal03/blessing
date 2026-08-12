@@ -1,6 +1,6 @@
 import 'package:blessing/constands/colors.dart';
-import 'package:blessing/views/main_navigation_bar.dart';
 import 'package:blessing/services/notification_service.dart';
+import 'package:blessing/views/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -41,7 +41,7 @@ class MyApp extends StatelessWidget {
       ),
       debugShowCheckedModeBanner: false,
       title: 'Blessing',
-      home: const MainNavigationWrapper(),
+      home: const SplashScreen(),
     );
   }
 }

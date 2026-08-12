@@ -1,4 +1,5 @@
 import 'package:blessing/constands/colors.dart';
+import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/local_storage_service.dart';
 import 'package:blessing/services/quran_service.dart';
 import 'package:blessing/views/juz_details_screen.dart';
@@ -84,18 +85,52 @@ class _QuranSectionState extends State<QuranSection> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: colors.kPrimaryBg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Quran',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: colors.kTextWhite,
+            fontSize: 22,
+          ),
         ),
-        actions: const [
-          Icon(Icons.notifications_none, color: Colors.white),
-          SizedBox(width: 15),
-          CircleAvatar(radius: 14, child: Icon(Icons.person, size: 18)),
-          SizedBox(width: 15),
+        actions: [
+          CustomCircleIconButton(
+            icon: Icons.notifications_none_rounded,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Notifications coming soon'),
+                  backgroundColor: colors.kCardBg,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+          CustomCircleIconButton(
+            icon: Icons.person_outline_rounded,
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Profile coming soon'),
+                  backgroundColor: colors.kCardBg,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 10),
         ],
       ),
       body: SingleChildScrollView(
@@ -104,12 +139,13 @@ class _QuranSectionState extends State<QuranSection> {
           children: [
             const SizedBox(height: 10),
             _buildSearchBar(),
-            const SizedBox(height: 25),
+            const SizedBox(height: 24),
             _buildContinueReadingCard(),
-            const SizedBox(height: 25),
+            const SizedBox(height: 24),
             _buildTabSwitcher(),
             const SizedBox(height: 20),
             _selectedTabIndex == 0 ? _buildSurahList() : _buildJuzList(),
+            const SizedBox(height: 100), // Spacing for floating navbar
           ],
         ),
       ),
@@ -118,21 +154,29 @@ class _QuranSectionState extends State<QuranSection> {
 
   Widget _buildSearchBar() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: colors.kSurface,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.kGlassBorder),
       ),
       child: TextField(
         controller: _searchController,
         onChanged: _filterData,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: colors.kTextWhite),
         decoration: InputDecoration(
-          icon: const Icon(Icons.search, color: Colors.grey),
-          hintText: _selectedTabIndex == 0
-              ? "Search Surah..."
-              : "Search Juz...",
-          hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+          prefixIcon: Icon(Icons.search_rounded, color: colors.kTextGrey),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: Icon(Icons.clear_rounded, color: colors.kTextGrey, size: 18),
+                  onPressed: () {
+                    _searchController.clear();
+                    _filterData('');
+                  },
+                )
+              : null,
+          hintText: _selectedTabIndex == 0 ? "Search Surah by name or number..." : "Search Juz...",
+          hintStyle: TextStyle(color: colors.kTextMuted, fontSize: 13),
           border: InputBorder.none,
         ),
       ),
@@ -152,13 +196,14 @@ class _QuranSectionState extends State<QuranSection> {
             builder: (context) =>
                 SurahDetailScreen(surahNumber: surahNum, initialAyah: ayahNum),
           ),
-        ).then((_) => _loadLastRead()); // Reload when coming back
+        ).then((_) => _loadLastRead());
       },
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: colors.kSecondaryBg,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: colors.kGlassBorder),
           image: const DecorationImage(
             image: NetworkImage(
               'https://images.unsplash.com/photo-1544947950-fa07a98d237f',
@@ -166,48 +211,69 @@ class _QuranSectionState extends State<QuranSection> {
             fit: BoxFit.cover,
             opacity: 0.1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "CONTINUE READING",
-                      style: TextStyle(
-                        color: colors.kAccentNeon,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: colors.kAccentNeon.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    "LAST READ",
+                    style: TextStyle(
+                      color: colors.kAccentNeon,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.8,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      surahName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      "Ayah $ayahNum",
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-                const CircleAvatar(
-                  radius: 25,
-                  backgroundColor: Color(0xFF12E612),
-                  child: Icon(Icons.play_arrow, color: Colors.black, size: 30),
+                const SizedBox(height: 8),
+                Text(
+                  surahName,
+                  style: TextStyle(
+                    color: colors.kTextWhite,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "Ayah $ayahNum",
+                  style: TextStyle(
+                    color: colors.kTextGrey,
+                    fontSize: 13,
+                  ),
                 ),
               ],
+            ),
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                gradient: colors.emeraldGradient,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.kAccentNeon.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 30),
             ),
           ],
         ),
@@ -219,16 +285,18 @@ class _QuranSectionState extends State<QuranSection> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFF142214),
-        borderRadius: BorderRadius.circular(15),
+        color: colors.kSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.kGlassBorder),
       ),
       child: Row(
         children: [
           Expanded(
             child: GestureDetector(
               onTap: () => setState(() => _selectedTabIndex = 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 11),
                 decoration: BoxDecoration(
                   color: _selectedTabIndex == 0
                       ? colors.kAccentNeon
@@ -251,8 +319,9 @@ class _QuranSectionState extends State<QuranSection> {
           Expanded(
             child: GestureDetector(
               onTap: () => setState(() => _selectedTabIndex = 1),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 11),
                 decoration: BoxDecoration(
                   color: _selectedTabIndex == 1
                       ? colors.kAccentNeon
@@ -292,7 +361,7 @@ class _QuranSectionState extends State<QuranSection> {
                 builder: (context) =>
                     SurahDetailScreen(surahNumber: surah['id']),
               ),
-            ).then((_) => _loadLastRead()); // Reload when coming back
+            ).then((_) => _loadLastRead());
           },
           child: _buildSurahItem(surah),
         );
@@ -309,34 +378,42 @@ class _QuranSectionState extends State<QuranSection> {
       decoration: BoxDecoration(
         color: colors.kSecondaryBg,
         borderRadius: BorderRadius.circular(20),
-        border: isLastRead
-            ? Border.all(color: colors.kAccentNeon.withOpacity(0.3))
-            : null,
+        border: Border.all(
+          color: isLastRead
+              ? colors.kAccentNeon
+              : colors.kGlassBorder,
+          width: isLastRead ? 1.5 : 1.0,
+        ),
       ),
       child: Row(
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(Icons.star, color: colors.kAccentDark, size: 40),
-              Text(
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colors.kAccentNeon.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: colors.kAccentNeon.withValues(alpha: 0.3)),
+            ),
+            child: Center(
+              child: Text(
                 "${surah['id']}",
                 style: TextStyle(
                   color: colors.kAccentNeon,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ],
+            ),
           ),
           const SizedBox(width: 15),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                surah['name'], // Transliterated name (e.g. Al-Fatihah)
-                style: const TextStyle(
-                  color: Colors.white,
+                surah['name'],
+                style: TextStyle(
+                  color: colors.kTextWhite,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
@@ -344,11 +421,11 @@ class _QuranSectionState extends State<QuranSection> {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                  Icon(Icons.location_on_outlined, size: 12, color: colors.kTextGrey),
                   const SizedBox(width: 4),
                   Text(
-                    "${surah['type']} • ${surah['ayahs']} AYAHS",
-                    style: const TextStyle(color: Colors.grey, fontSize: 10),
+                    "${surah['type'].toString().toUpperCase()} • ${surah['ayahs']} AYAHS",
+                    style: TextStyle(color: colors.kTextGrey, fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -359,7 +436,7 @@ class _QuranSectionState extends State<QuranSection> {
             surah['arabicName'] ?? "",
             style: TextStyle(
               color: colors.kAccentNeon,
-              fontSize: 20,
+              fontSize: 22,
               fontFamily: 'Amiri',
             ),
           ),
@@ -397,22 +474,28 @@ class _QuranSectionState extends State<QuranSection> {
       decoration: BoxDecoration(
         color: colors.kSecondaryBg,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.kGlassBorder),
       ),
       child: Row(
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(Icons.star, color: colors.kAccentDark, size: 40),
-              Text(
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colors.kAccentNeon.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: colors.kAccentNeon.withValues(alpha: 0.3)),
+            ),
+            child: Center(
+              child: Text(
                 "${juz['id']}",
                 style: TextStyle(
                   color: colors.kAccentNeon,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ],
+            ),
           ),
           const SizedBox(width: 15),
           Expanded(
@@ -421,8 +504,8 @@ class _QuranSectionState extends State<QuranSection> {
               children: [
                 Text(
                   juz['name'],
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: colors.kTextWhite,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -430,14 +513,14 @@ class _QuranSectionState extends State<QuranSection> {
                 const SizedBox(height: 4),
                 Text(
                   juz['description'],
-                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  style: TextStyle(color: colors.kTextGrey, fontSize: 11),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
+          Icon(Icons.arrow_forward_ios_rounded, color: colors.kTextGrey, size: 14),
         ],
       ),
     );

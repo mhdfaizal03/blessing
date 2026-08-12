@@ -1,4 +1,5 @@
 import 'package:blessing/constands/colors.dart';
+import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/local_storage_service.dart';
 import 'package:blessing/services/quran_service.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +30,8 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
   bool _showTranslation = true;
   int? _lastPlayedAyah;
   int? _lastPlayedSurah;
+  final Map<String, GlobalKey> _juzAyahKeys = {};
+  final List<Map<String, int>> _allFlatVerses = [];
 
   late Map<int, List<int>> _juzData;
 
@@ -36,6 +39,11 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
   void initState() {
     super.initState();
     _juzData = quran.getSurahAndVersesFromJuz(widget.juzNumber);
+    _juzData.forEach((surahNum, verses) {
+      for (var verseNum in verses) {
+        _allFlatVerses.add({'surah': surahNum, 'ayah': verseNum});
+      }
+    });
     _setupAudio();
     _loadLastRead();
   }
@@ -52,22 +60,43 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
     }
   }
 
+  void _scrollToAyah(int surahNum, int verseNum) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _juzAyahKeys["${surahNum}_$verseNum"];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.25,
+        );
+      }
+    });
+  }
+
   void _setupAudio() {
     _player.playerStateStream.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state.playing;
-        });
-      }
-    });
-
-    _player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed) {
-        if (mounted) {
-          setState(() {
+          if (state.processingState == ProcessingState.completed) {
             _isPlaying = false;
-          });
-        }
+            // Auto play next verse in Juz
+            final currentIndex = _allFlatVerses.indexWhere(
+              (v) =>
+                  v['surah'] == _currentSurahPlaying &&
+                  v['ayah'] == _currentAyahPlaying,
+            );
+            if (currentIndex != -1 &&
+                currentIndex + 1 < _allFlatVerses.length) {
+              final next = _allFlatVerses[currentIndex + 1];
+              _playAyah(next['surah']!, next['ayah']!);
+            } else {
+              _currentAyahPlaying = -1;
+              _currentSurahPlaying = -1;
+            }
+          }
+        });
       }
     });
   }
@@ -95,6 +124,9 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
         _lastPlayedSurah = surahNum;
       });
 
+      // Smooth auto-scroll to the active verse
+      _scrollToAyah(surahNum, ayahNumber);
+
       // Save to local storage
       await _storageService.saveLastRead(surahNum, ayahNumber);
 
@@ -102,15 +134,19 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
       await _player.setUrl(url);
       await _player.play();
 
-      setState(() {
-        _isLoadingAudio = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingAudio = false;
+        });
+      }
     } catch (e) {
       debugPrint("Error playing audio: $e");
-      setState(() {
-        _isLoadingAudio = false;
-        _isPlaying = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingAudio = false;
+          _isPlaying = false;
+        });
+      }
     }
   }
 
@@ -128,13 +164,9 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Colors.white,
-            size: 20,
-          ),
-          onPressed: () => Navigator.pop(context),
+        leading: CustomCircleIconButton(
+          icon: Icons.keyboard_arrow_left_rounded,
+          onTap: () => Navigator.pop(context),
         ),
         title: Text(
           "Juz ${widget.juzNumber}",
@@ -228,7 +260,7 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors().kAccentNeon.withOpacity(0.1),
+              color: AppColors().kAccentNeon.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -295,45 +327,59 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
   }
 
   Widget _buildVerseItem(int surahNum, int verseNum) {
+    final key = _juzAyahKeys.putIfAbsent(
+      "${surahNum}_$verseNum",
+      () => GlobalKey(),
+    );
     final arabic = _quranService.getVerseArabic(surahNum, verseNum);
     final translation = _quranService.getVerseTranslation(surahNum, verseNum);
-    final isPlaying =
-        _currentAyahPlaying == verseNum &&
-        _currentSurahPlaying == surahNum &&
-        _isPlaying;
+    final isCurrentlyPlaying =
+        _currentAyahPlaying == verseNum && _currentSurahPlaying == surahNum;
+    final isPlayingAudio = isCurrentlyPlaying && _isPlaying;
     final isLastRead =
         _lastPlayedAyah == verseNum && _lastPlayedSurah == surahNum;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: isLastRead ? const EdgeInsets.all(12) : null,
-      decoration: isLastRead
-          ? BoxDecoration(
-              color: colors.kAccentNeon.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: colors.kAccentNeon.withOpacity(0.2)),
-            )
-          : null,
+      key: key,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isCurrentlyPlaying
+            ? colors.kAccentNeon.withValues(alpha: 0.08)
+            : (isLastRead
+                ? colors.kAccentNeon.withValues(alpha: 0.03)
+                : colors.kSurface.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCurrentlyPlaying
+              ? colors.kAccentNeon
+              : (isLastRead
+                  ? colors.kAccentNeon.withValues(alpha: 0.3)
+                  : colors.kGlassBorder),
+          width: isCurrentlyPlaying ? 1.5 : 1.0,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: colors.kAccentNeon,
-                  borderRadius: BorderRadius.circular(4),
+                  color: isCurrentlyPlaying
+                      ? colors.kAccentNeon
+                      : colors.kAccentNeon.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Center(
-                  child: Text(
-                    "$verseNum",
-                    style: TextStyle(
-                      color: colors.kPrimaryBg,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+                child: Text(
+                  "Ayah $verseNum",
+                  style: TextStyle(
+                    color: isCurrentlyPlaying
+                        ? colors.kPrimaryBg
+                        : colors.kAccentNeon,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -354,11 +400,11 @@ class _JuzDetailScreenState extends State<JuzDetailScreen> {
                             ),
                           )
                         : Icon(
-                            isPlaying
+                            isPlayingAudio
                                 ? Icons.pause_circle_filled
                                 : Icons.play_circle_fill,
                             color: colors.kAccentNeon,
-                            size: 28,
+                            size: 26,
                           ),
                     onPressed: () => _playAyah(surahNum, verseNum),
                   ),

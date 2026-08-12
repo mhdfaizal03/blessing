@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:blessing/constands/colors.dart';
 import 'package:blessing/core/widgets/custom_widgets.dart';
 import 'package:blessing/services/local_storage_service.dart';
@@ -36,6 +35,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   bool _isLoadingAudio = false;
   bool _showTranslation = true;
   int? _lastPlayedAyah;
+  final Map<int, GlobalKey> _ayahKeys = {};
 
   @override
   void initState() {
@@ -47,8 +47,6 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     if (widget.initialAyah != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _playAyah(widget.initialAyah!);
-        // Basic scroll attempt
-        _scrollToAyah(widget.initialAyah!);
       });
     }
   }
@@ -65,14 +63,24 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   }
 
   void _scrollToAyah(int ayah) {
-    // Very simple rough estimation: average height of verse is ~250
-    // Not perfect but better than nothing without extra packages
-    double offset = (ayah - 1) * 200.0;
-    _scrollController.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _ayahKeys[ayah];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+          alignment: 0.25, // Scroll verse smoothly to upper-third viewport
+        );
+      } else if (_scrollController.hasClients) {
+        double offset = (ayah - 1) * 220.0;
+        _scrollController.animateTo(
+          offset.clamp(0.0, _scrollController.position.maxScrollExtent),
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   void _loadDetails() {
@@ -90,7 +98,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
           _isPlaying = state.playing;
           if (state.processingState == ProcessingState.completed) {
             _isPlaying = false;
-            // Auto play next verse
+            // Auto play next verse & auto-scroll
             if (_currentAyahPlaying != -1 &&
                 _currentAyahPlaying < _totalAyahs) {
               _playAyah(_currentAyahPlaying + 1);
@@ -123,6 +131,9 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
         _lastPlayedAyah = ayahNumber;
       });
 
+      // Smoothly auto-scroll to the active verse
+      _scrollToAyah(ayahNumber);
+
       // Save to local storage
       await _storageService.saveLastRead(widget.surahNumber, ayahNumber);
 
@@ -130,15 +141,19 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
       await _player.setUrl(url);
       await _player.play();
 
-      setState(() {
-        _isLoadingAudio = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingAudio = false;
+        });
+      }
     } catch (e) {
       debugPrint("Error playing audio: $e");
-      setState(() {
-        _isLoadingAudio = false;
-        _isPlaying = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingAudio = false;
+          _isPlaying = false;
+        });
+      }
     }
   }
 
@@ -306,7 +321,6 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
                 widget.surahNumber,
                 verseNum,
               );
-              final isPlaying = _currentAyahPlaying == verseNum;
 
               return TextSpan(
                 children: [
@@ -339,24 +353,36 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   }
 
   Widget _buildVerseItem(int verseNum) {
+    final key = _ayahKeys.putIfAbsent(verseNum, () => GlobalKey());
     final arabic = _quranService.getVerseArabic(widget.surahNumber, verseNum);
     final translation = _quranService.getVerseTranslation(
       widget.surahNumber,
       verseNum,
     );
-    final isPlaying = _currentAyahPlaying == verseNum && _isPlaying;
+    final isCurrentlyPlaying = _currentAyahPlaying == verseNum;
+    final isPlayingAudio = isCurrentlyPlaying && _isPlaying;
     final isLastRead = _lastPlayedAyah == verseNum;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: isLastRead ? const EdgeInsets.all(12) : null,
-      decoration: isLastRead
-          ? BoxDecoration(
-              color: colors.kAccentNeon.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: colors.kAccentNeon.withOpacity(0.2)),
-            )
-          : null,
+      key: key,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isCurrentlyPlaying
+            ? colors.kAccentNeon.withValues(alpha: 0.08)
+            : (isLastRead
+                ? colors.kAccentNeon.withValues(alpha: 0.03)
+                : colors.kSurface.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCurrentlyPlaying
+              ? colors.kAccentNeon
+              : (isLastRead
+                  ? colors.kAccentNeon.withValues(alpha: 0.3)
+                  : colors.kGlassBorder),
+          width: isCurrentlyPlaying ? 1.5 : 1.0,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -364,16 +390,20 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: colors.kAccentNeon.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(4),
+                  color: isCurrentlyPlaying
+                      ? colors.kAccentNeon
+                      : colors.kAccentNeon.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   "Ayah $verseNum",
                   style: TextStyle(
-                    color: colors.kAccentNeon,
-                    fontSize: 10,
+                    color: isCurrentlyPlaying
+                        ? colors.kPrimaryBg
+                        : colors.kAccentNeon,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -383,18 +413,19 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
                 onPressed: () => _playAyah(verseNum),
                 icon: _isLoadingAudio && _currentAyahPlaying == verseNum
                     ? SizedBox(
-                        width: 16,
-                        height: 16,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: colors.kAccentNeon,
                         ),
                       )
                     : Icon(
-                        isPlaying
-                            ? Icons.pause_circle
-                            : Icons.play_circle_outline,
+                        isPlayingAudio
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_fill,
                         color: colors.kAccentNeon,
+                        size: 26,
                       ),
               ),
             ],
@@ -428,7 +459,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
           ),
 
           const SizedBox(height: 16),
-          Divider(color: colors.kTextWhite.withOpacity(0.1)),
+          Divider(color: colors.kTextWhite.withValues(alpha: 0.1)),
         ],
       ),
     );
